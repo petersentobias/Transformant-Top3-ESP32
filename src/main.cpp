@@ -52,7 +52,7 @@ static unsigned long lastBatterySample=0;
 void sampleBattery(){
   uint32_t sum=0;
   for(int i=0;i<16;i++){sum+=analogReadMilliVolts(1);delayMicroseconds(200);}
-  float v=(sum/16.0f)*2.0f/1000.0f; // Assumes 1:1 divider; verify on actual hardware.
+  float v=(sum/16.0f)*3.0f/1000.0f; // Waveshare 200k/100k divider: VBAT = VADC * 3.
   if(v<2.7f||v>4.45f){batteryVoltage=0;batteryPercent=-1;return;}
   batteryVoltage=v;
   const float volts[]={3.30f,3.50f,3.60f,3.70f,3.75f,3.80f,3.85f,3.90f,4.00f,4.10f,4.20f};
