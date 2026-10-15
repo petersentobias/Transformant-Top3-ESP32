@@ -4,7 +4,7 @@
 :root{font-family:system-ui,sans-serif;color:#edf4ff;background:#0b101b}*{box-sizing:border-box}body{margin:0;padding:24px}header{max-width:1100px;margin:auto}h1{font-size:clamp(22px,3vw,32px);margin:0 0 6px}p{color:#aab9d1}main{max-width:1100px;margin:22px auto;display:grid;grid-template-columns:minmax(290px,1fr) minmax(290px,1fr);gap:24px;align-items:start}.panel{background:#141d2c;border:1px solid #29394e;border-radius:18px;padding:22px}.preview{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:18px}canvas{width:min(100%,480px);height:auto;aspect-ratio:1;background:#000;border-radius:50%;box-shadow:0 0 0 8px #273443,0 12px 50px #0008;image-rendering:auto}label{display:block;margin:14px 0 5px;font-size:13px;color:#b7c8df}input,select,button{font:inherit;border-radius:8px;border:1px solid #3b5068;background:#0c1523;color:#fff;padding:9px;width:100%}input[type=color]{height:40px;padding:3px}input[type=range]{padding:0}button{cursor:pointer;background:#007bc1;border:0;font-weight:600;margin-top:12px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.person{display:grid;grid-template-columns:1fr 1fr;gap:10px}.hint{font-size:12px;color:#98acc5}#export{background:#23364e} @media(max-width:750px){main{grid-template-columns:1fr}}
 </style></head><body><header><h1>Transformant Top 3 · Designstudio</h1><p>Redigera layouten direkt – utan kompilering eller flashning. Förhandsvisningen motsvarar 240 × 240 pixlar.</p></header>
 <main><section class="panel preview"><canvas id="screen" width="240" height="240" aria-label="Förhandsvisning av rund ESP32-skärm"></canvas><span class="hint">Exakt 240 × 240 px · simulerad rund skärm · testdata</span><button id="png">Spara förhandsvisning som PNG</button></section>
-<section class="panel"><h2>Design</h2><div class="grid"><div><label for="bg">Bakgrund</label><input id="bg" type="color" value="#061923"></div><div><label for="accent">Accentfärg</label><input id="accent" type="color" value="#5fe9bd"></div></div><label for="title">Rubrik</label><input id="title" value="TOP 3" maxlength="16"><label for="brand">Företag</label><input id="brand" value="TRANSFORMANT" maxlength="20"><label for="period">Period</label><input id="period" value="OKTOBER 2026" maxlength="24"><label for="scale">Textstorlek <output id="scaleValue">100%</output></label><input id="scale" type="range" min="80" max="125" value="100"><label for="spacing">Radavstånd <output id="spacingValue">37 px</output></label><input id="spacing" type="range" min="33" max="41" value="37"><h2>Topplista</h2><div id="people"></div><button id="export">Kopiera designinställningar (JSON)</button><p class="hint">Den här simulatorn är en HTML Canvas-prototyp. Den ändrar ännu inte firmware på ESP32.</p></section></main>
+<section class="panel"><h2>Design</h2><div class="grid"><div><label for="bg">Bakgrund</label><input id="bg" type="color" value="#061923"></div><div><label for="accent">Accentfärg</label><input id="accent" type="color" value="#5fe9bd"></div></div><label for="brand">Företag</label><input id="brand" value="TRANSFORMANT" maxlength="20"><label for="period">Period</label><input id="period" value="OKTOBER 2026" maxlength="24"><label for="scale">Textstorlek <output id="scaleValue">100%</output></label><input id="scale" type="range" min="80" max="125" value="100"><label for="spacing">Radavstånd <output id="spacingValue">37 px</output></label><input id="spacing" type="range" min="33" max="41" value="37"><h2>Topplista</h2><div id="people"></div><button id="export">Kopiera designinställningar (JSON)</button><p class="hint">Den här simulatorn är en HTML Canvas-prototyp. Den ändrar ännu inte firmware på ESP32.</p></section></main>
 <script>
 const $=id=>document.getElementById(id), canvas=$('screen'), ctx=canvas.getContext('2d');
 const defaults=[['Anna Andersson','184 500'],['Erik Svensson','171 200'],['Maria Lind','158 900']];
@@ -19,13 +19,12 @@ function draw(){
  ctx.beginPath();ctx.arc(266,180,180,2.1,4.2);ctx.stroke();
  const bloom=ctx.createRadialGradient(10,162,2,30,180,115);bloom.addColorStop(0,'#00d8a122');bloom.addColorStop(1,'#00d8a100');ctx.fillStyle=bloom;ctx.fillRect(0,60,240,180);
  ctx.strokeStyle='#12608a99';ctx.beginPath();ctx.arc(120,120,116,0,Math.PI*2);ctx.stroke();
- textFit(s.brand,120,24,156,12*sc,'#effaff','800');
- textFit(s.title,120,47,160,21*sc,'#5ff1c1','900');
- textFit(s.period,120,73,164,16*sc,'#f8fcff','750');
- textFit('1–15 okt · hittills denna månad',120,89,175,8.5*sc,'#aebed0','500');
+ textFit(s.brand,120,32,170,14*sc,'#effaff','800');
+ textFit(s.period,120,58,174,18*sc,'#f8fcff','750');
+ textFit('1–15 okt · hittills denna månad',120,77,175,9*sc,'#aebed0','500');
  const metals=[['#fff4b0','#ffcf40','#b87808'],['#ffffff','#cbd6eb','#7d8aa8'],['#ffe1b4','#e49a58','#99511e']];
  for(let i=0;i<3;i++){
-   const y=100+i*32, x=24,w=192;
+   const y=94+i*35, x=24,w=192;
    ctx.save();ctx.shadowColor='#0009';ctx.shadowBlur=5;ctx.shadowOffsetY=3;
    const panel=ctx.createLinearGradient(x,y,x+w,y+26);panel.addColorStop(0,'#06131dcc');panel.addColorStop(.6,'#0a1b24ee');panel.addColorStop(1,'#06121add');
    ctx.fillStyle=panel;ctx.beginPath();ctx.roundRect(x,y,w,29,7);ctx.fill();ctx.restore();
@@ -42,10 +41,10 @@ function draw(){
    ctx.textBaseline='middle';ctx.textAlign='left';let sz=11*sc;ctx.font='700 '+sz+'px system-ui';while(ctx.measureText(name).width>92&&sz>7){sz-=.5;ctx.font='700 '+sz+'px system-ui'}ctx.fillStyle='#f5faff';ctx.fillText(name,x+32,y+16);
    ctx.textAlign='right';sz=11*sc;ctx.font='800 '+sz+'px system-ui';while(ctx.measureText(amount).width>77&&sz>7){sz-=.5;ctx.font='800 '+sz+'px system-ui'}ctx.fillStyle='#6cf1c7';ctx.fillText(amount,x+w-7,y+16);
  }
- ctx.strokeStyle='#44657999';ctx.beginPath();ctx.moveTo(56,202);ctx.lineTo(184,202);ctx.stroke();
- textFit('Uppd. 15 okt 14:27',94,211,106,7.5,'#a9bacd','500');
- ctx.fillStyle='#5cf0bb';ctx.beginPath();ctx.arc(166,211,3,0,Math.PI*2);ctx.fill();
- textFit('Online',185,211,35,7.5,'#6cf1c7','600');
+ ctx.strokeStyle='#44657999';ctx.beginPath();ctx.moveTo(56,205);ctx.lineTo(184,205);ctx.stroke();
+ textFit('Uppd. 15 okt 14:27',94,216,106,7.5,'#a9bacd','500');
+ ctx.fillStyle='#5cf0bb';ctx.beginPath();ctx.arc(166,216,3,0,Math.PI*2);ctx.fill();
+ textFit('Online',185,216,35,7.5,'#6cf1c7','600');
  ctx.restore();
 }
 document.querySelectorAll('input').forEach(e=>e.addEventListener('input',()=>{$('scaleValue').textContent=$('scale').value+'%';$('spacingValue').textContent=$('spacing').value+' px';draw()}));$('png').onclick=()=>{const a=document.createElement('a');a.download='transformant-top3-preview.png';a.href=canvas.toDataURL('image/png');a.click()};$('export').onclick=()=>navigator.clipboard.writeText(JSON.stringify(state(),null,2)).then(()=>{$('export').textContent='Kopierat!';setTimeout(()=>$('export').textContent='Kopiera designinställningar (JSON)',1600)});draw();
