@@ -44,7 +44,26 @@ static bool touchMoved=false;
 void drawDashboard();
 void fetchTop3();
 void drawTouchPage();
-void renderScreen(){if(screenPage==0)drawDashboard();else drawTouchPage();}
+void drawBatteryPage();
+static float batteryVoltage=0;
+static int batteryPercent=-1;
+static unsigned long lastBatterySample=0;
+// GPIO1 is the board's battery ADC input. The scale is provisional until measured.
+void sampleBattery(){
+  uint32_t sum=0;
+  for(int i=0;i<16;i++){sum+=analogReadMilliVolts(1);delayMicroseconds(200);}
+  float v=(sum/16.0f)*2.0f/1000.0f; // Assumes 1:1 divider; verify on actual hardware.
+  if(v<2.7f||v>4.45f){batteryVoltage=0;batteryPercent=-1;return;}
+  batteryVoltage=v;
+  const float volts[]={3.30f,3.50f,3.60f,3.70f,3.75f,3.80f,3.85f,3.90f,4.00f,4.10f,4.20f};
+  const int pct[]={0,5,10,20,30,40,50,60,75,90,100};
+  batteryPercent=100;
+  for(int i=1;i<11;i++)if(v<volts[i]){
+    batteryPercent=pct[i-1]+(int)((v-volts[i-1])*(pct[i]-pct[i-1])/(volts[i]-volts[i-1]));
+    break;
+  }
+}
+void renderScreen(){if(screenPage==0)drawDashboard();else if(screenPage==1)drawTouchPage();else drawBatteryPage();}
 
 static const char* apiUrl="https://transformant-top3-api.petersen-tobias.workers.dev/api/top3";
 static String sek(int64_t v){String s=String(v),out;int n=0;for(int i=s.length()-1;i>=0;i--){if(n&&n%3==0)out=" "+out;out=String(s[i])+out;n++;}return out+" kr";}
@@ -126,6 +145,22 @@ void drawTouchPage(){
  centered(apiError=="OK"?"Senast: OK":apiError.c_str(),180,1,mint,navy);
  centered("Svep vanster: Topplista",204,1,rgb(157,186,189),navy);
 }
+void drawBatteryPage(){
+ const uint16_t navy=rgb(1,9,14),mint=rgb(111,233,186);
+ lcd->fillScreen(navy);
+ lcd->drawCircle(120,120,114,rgb(9,49,62));
+ smoothCenter("TRANSFORMANT",43,&FreeSansBold9pt7b,WHITE565);
+ smoothCenter("BATTERI",76,&FreeSansBold9pt7b,WHITE565);
+ lcd->drawRoundRect(88,92,64,29,5,WHITE565);
+ lcd->fillRoundRect(153,100,5,13,2,WHITE565);
+ if(batteryPercent>=0)lcd->fillRoundRect(92,96,(56*batteryPercent)/100,21,3,batteryPercent<20?GOLD:mint);
+ String percentage=batteryPercent>=0?String(batteryPercent)+"%":"--%";
+ centered(percentage.c_str(),138,3,WHITE565,navy);
+ String voltage=batteryVoltage>0?String(batteryVoltage,2)+" V":"Ingen matning";
+ centered(voltage.c_str(),170,1,mint,navy);
+ centered("Laddstatus: okand",191,1,GOLD,navy);
+ centered("Svep for att byta sida",210,1,rgb(157,186,189),navy);
+}
 void setupTouch(){
  pinMode(13,OUTPUT);digitalWrite(13,LOW);delay(20);digitalWrite(13,HIGH);delay(80);
  pinMode(5,INPUT_PULLUP);
@@ -143,12 +178,12 @@ void pollTouch(){
  uint8_t xh=Wire.read(),xl=Wire.read(),yh=Wire.read(),yl=Wire.read();
  int x=((xh&0x0F)<<8)|xl,y=((yh&0x0F)<<8)|yl;
  bool touching=(xh>>6)==0 && x<240 && y<240;
- if(gesture==4 && screenPage==0){screenPage=1;drawTouchPage();touchDebounce=millis()+250;touchHeld=true;return;}
- if(gesture==3 && screenPage==1){screenPage=0;drawDashboard();touchDebounce=millis()+250;touchHeld=true;return;}
+ if(gesture==4){screenPage=(screenPage+1)%3;renderScreen();touchDebounce=millis()+250;touchHeld=true;return;}
+ if(gesture==3){screenPage=(screenPage+2)%3;renderScreen();touchDebounce=millis()+250;touchHeld=true;return;}
  if(touching&&!touchHeld){touchStartX=x;touchStartY=y;touchMoved=false;touchHeld=true;}
  if(touching&&touchHeld){
-   if(screenPage==0&&x-touchStartX>65){screenPage=1;drawTouchPage();touchDebounce=millis()+250;return;}
-   if(screenPage==1&&touchStartX-x>65){screenPage=0;drawDashboard();touchDebounce=millis()+250;return;}
+   if(x-touchStartX>65){screenPage=(screenPage+1)%3;renderScreen();touchDebounce=millis()+250;return;}
+   if(touchStartX-x>65){screenPage=(screenPage+2)%3;renderScreen();touchDebounce=millis()+250;return;}
    if(abs(x-touchStartX)>22||abs(y-touchStartY)>22)touchMoved=true;
  }
  if(!touching&&touchHeld){
@@ -306,7 +341,10 @@ load();setInterval(load,15000);
     d["wifi_connected"] = WiFi.status() == WL_CONNECTED;
     d["setup_ap"] = apMode;
     d["ip"] = apMode ? WiFi.softAPIP().toString() : WiFi.localIP().toString();
-    d["firmware"] = "0.5.0-touch";
+    d["firmware"] = "0.6.0-battery";
+    d["battery_voltage"] = batteryVoltage;
+    d["battery_percent"] = batteryPercent;
+    d["charging_status"] = "unknown";
     d["wifi_ssid"] = WiFi.status()==WL_CONNECTED?WiFi.SSID():"";
     d["wifi_rssi"] = WiFi.status()==WL_CONNECTED?WiFi.RSSI():-100;
     d["wifi_ip"] = WiFi.status()==WL_CONNECTED?WiFi.localIP().toString():"";
@@ -382,6 +420,10 @@ void setup() {
   Serial.begin(115200);
   drawBootScreen();
   setupTouch();
+  analogReadResolution(12);
+  analogSetPinAttenuation(1,ADC_11db);
+  sampleBattery();
+  lastBatterySample=millis();
   prefs.begin("tfmtop",false);
   adminSalt=prefs.getString("adminSalt","");adminHash=prefs.getString("adminHash","");
   ssid=prefs.getString("ssid","");
@@ -409,6 +451,10 @@ void setup() {
 void loop() {
   server.handleClient();
   pollTouch();
+  if(millis()-lastBatterySample>15000){
+    lastBatterySample=millis();int old=batteryPercent;sampleBattery();
+    if(screenPage==2&&old!=batteryPercent)drawBatteryPage();
+  }
   if(WiFi.status()==WL_CONNECTED&&(!fetchAttempted||millis()-lastFetch>=refreshSeconds*1000UL)){
     fetchAttempted=true;lastFetch=millis();fetchTop3();
   }
