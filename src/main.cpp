@@ -149,16 +149,20 @@ void drawBatteryPage(){
  const uint16_t navy=rgb(1,9,14),mint=rgb(111,233,186);
  lcd->fillScreen(navy);
  lcd->drawCircle(120,120,114,rgb(9,49,62));
- smoothCenter("TRANSFORMANT",43,&FreeSansBold9pt7b,WHITE565);
- smoothCenter("BATTERI",76,&FreeSansBold9pt7b,WHITE565);
- lcd->drawRoundRect(88,92,64,29,5,WHITE565);
- lcd->fillRoundRect(153,100,5,13,2,WHITE565);
- if(batteryPercent>=0)lcd->fillRoundRect(92,96,(56*batteryPercent)/100,21,3,batteryPercent<20?GOLD:mint);
+ smoothCenter("TRANSFORMANT",42,&FreeSansBold9pt7b,WHITE565);
+ smoothCenter("BATTERI",73,&FreeSansBold9pt7b,WHITE565);
+ lcd->drawRoundRect(88,88,64,25,5,WHITE565);
+ lcd->fillRoundRect(153,95,5,11,2,WHITE565);
+ if(batteryPercent>=0)lcd->fillRoundRect(92,92,(56*batteryPercent)/100,17,3,batteryPercent<20?GOLD:mint);
+ // The previous page inherited FreeSans from smoothCenter, causing centered()
+ // to draw its bitmap text with the wrong font and overlapping coordinates.
+ lcd->setFont(nullptr);
  String percentage=batteryPercent>=0?String(batteryPercent)+"%":"--%";
- centered(percentage.c_str(),138,3,WHITE565,navy);
+ centered(percentage.c_str(),123,3,WHITE565,navy);
  String voltage=batteryVoltage>0?String(batteryVoltage,2)+" V":"Ingen matning";
- centered(voltage.c_str(),170,1,mint,navy);
- centered("Laddstatus: okand",191,1,GOLD,navy);
+ centered(voltage.c_str(),158,1,mint,navy);
+ centered("Laddning ej avlast",180,1,GOLD,navy);
+ centered("Procent ar uppskattad",195,1,rgb(157,186,189),navy);
  centered("Svep for att byta sida",210,1,rgb(157,186,189),navy);
 }
 void setupTouch(){
