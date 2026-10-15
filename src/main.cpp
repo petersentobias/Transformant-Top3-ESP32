@@ -9,54 +9,58 @@
 static Arduino_DataBus *lcdBus = new Arduino_ESP32SPI(8, 9, 10, 11, 12);
 static Arduino_GFX *lcd = new Arduino_GC9A01(lcdBus, 14, 0, true);
 
-// RGB565 Transformant-inspired palette. Test figures are illustrative only.
-static constexpr uint16_t BG=0x0000, NAVY=0x0864, CYAN=0x04DF;
-static constexpr uint16_t WHITE565=0xFFFF, MUTED=0xA534;
+// Round 240x240 screen: content is placed within the circle's safe area.
+// All measurements are explicit; no long title or amount can cross the rim.
+static constexpr uint16_t BG=0x0000, PANEL=0x0863, PANEL_EDGE=0x1188;
+static constexpr uint16_t BLUE=0x05BF, WHITE565=0xFFFF, SOFT=0xBDF7;
 static constexpr uint16_t GOLD=0xFEA0, SILVER=0xC638, BRONZE=0xB365;
 static const char* demoNames[3]={"ANNA","ERIK","MARIA"};
 static const char* demoAmounts[3]={"184 500","171 200","158 900"};
 
+void centeredLabel(const char* value,int centerX,int top,uint8_t size,uint16_t ink,uint16_t background) {
+  // Built-in GFX 5x7 font advances by 6 pixels per character.
+  int width=(int)strlen(value)*6*size;
+  lcd->setTextSize(size);
+  lcd->setTextColor(ink,background);
+  lcd->setCursor(centerX-width/2,top);
+  lcd->print(value);
+}
+
 void drawDashboard() {
   lcd->fillScreen(BG);
-  // Layered rings and blue highlights are clipped by the physical round panel.
-  lcd->drawCircle(120,120,118,NAVY);
-  lcd->drawCircle(120,120,114,0x00D5);
-  lcd->drawCircle(120,120,110,NAVY);
-  lcd->fillRoundRect(33,16,174,38,12,NAVY);
-  lcd->drawRoundRect(33,16,174,38,12,CYAN);
-  lcd->setTextSize(2);
-  lcd->setTextColor(WHITE565,NAVY);
-  lcd->setCursor(60,26);
-  lcd->print("TRANSFORMANT");
-  lcd->setTextSize(1);
-  lcd->setTextColor(CYAN,BG);
-  lcd->setCursor(92,64);
-  lcd->print("TOP 3");
-  lcd->drawFastHLine(44,79,152,CYAN);
-  const uint16_t medal[3]={GOLD,SILVER,BRONZE};
+  // Thin framing ring, not a thick neon border competing with the figures.
+  lcd->drawCircle(120,120,117,PANEL_EDGE);
+  lcd->drawCircle(120,120,115,0x0092);
+
+  // Brand header: deliberately compact, entirely inside the circle.
+  centeredLabel("TRANSFORMANT",120,24,1,BLUE,BG);
+  centeredLabel("TOP 3",120,41,3,WHITE565,BG);
+  lcd->drawFastHLine(73,72,94,BLUE);
+  centeredLabel("OKTOBER 2026",120,78,1,SOFT,BG);
+
+  const uint16_t medals[3]={GOLD,SILVER,BRONZE};
   for(int i=0;i<3;i++){
-    int y=90+i*40;
-    lcd->fillRoundRect(26,y,188,35,9,0x10A3);
-    lcd->drawRoundRect(26,y,188,35,9,NAVY);
-    lcd->fillCircle(44,y+17,11,medal[i]);
+    const int y=99+i*37;
+    // Widths are reduced toward the lower arc to prevent edge clipping.
+    const int x=(i==2)?39:30;
+    const int w=(i==2)?162:180;
+    lcd->fillRoundRect(x,y,w,32,9,PANEL);
+    lcd->drawRoundRect(x,y,w,32,9,PANEL_EDGE);
+    lcd->fillCircle(x+17,y+16,11,medals[i]);
+    centeredLabel(i==0?"1":(i==1?"2":"3"),x+17,y+12,1,BG,medals[i]);
     lcd->setTextSize(1);
-    lcd->setTextColor(BG,medal[i]);
-    lcd->setCursor(41,y+14);
-    lcd->print(i+1);
-    lcd->setTextColor(WHITE565,0x10A3);
-    lcd->setCursor(62,y+6);
+    lcd->setTextColor(WHITE565,PANEL);
+    lcd->setCursor(x+34,y+5);
     lcd->print(demoNames[i]);
-    lcd->setTextColor(CYAN,0x10A3);
-    lcd->setCursor(62,y+20);
+    lcd->setTextColor(BLUE,PANEL);
+    lcd->setCursor(x+34,y+18);
     lcd->print(demoAmounts[i]);
-    lcd->setTextColor(MUTED,0x10A3);
-    lcd->setCursor(164,y+20);
-    lcd->print("SEK");
+    lcd->setTextColor(SOFT,PANEL);
+    lcd->setCursor(x+w-28,y+18);
+    lcd->print("kr");
   }
-  lcd->setTextColor(MUTED,BG);
-  lcd->setCursor(75,219);
-  lcd->print("DEMODATA");
-  Serial.println("[lcd] Transformant Top 3 dashboard rendered");
+  centeredLabel("DEMODATA",120,216,1,SOFT,BG);
+  Serial.println("[lcd] centered round dashboard rendered");
 }
 
 void drawBootScreen() {
