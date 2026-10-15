@@ -4,6 +4,27 @@
 #include <ESPmDNS.h>
 #include <Preferences.h>
 #include <ArduinoJson.h>
+#include <TFT_eSPI.h>
+
+TFT_eSPI tft = TFT_eSPI();
+
+void drawBootScreen() {
+  pinMode(2, OUTPUT);
+  digitalWrite(2, HIGH);
+  tft.init();
+  tft.setRotation(0);
+  tft.fillScreen(TFT_BLACK);
+  tft.drawCircle(120, 120, 116, TFT_DARKGREY);
+  tft.setTextDatum(MC_DATUM);
+  tft.setTextColor(TFT_GREEN, TFT_BLACK);
+  tft.drawString("TRANSFORMANT", 120, 78, 2);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.drawString("TOP 3", 120, 116, 4);
+  tft.setTextColor(TFT_CYAN, TFT_BLACK);
+  tft.drawString("LCD TEST OK", 120, 157, 2);
+  tft.drawString("v0.2", 120, 180, 2);
+}
+
 
 WebServer server(80);
 Preferences prefs;
@@ -60,6 +81,7 @@ void setupRoutes() {
 
 void setup() {
   Serial.begin(115200);
+  drawBootScreen();
   prefs.begin("tfmtop",false);
   ssid=prefs.getString("ssid","");
   password=prefs.getString("password","");
