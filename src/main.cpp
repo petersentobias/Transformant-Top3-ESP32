@@ -41,6 +41,7 @@ static unsigned long touchDebounce=0;
 static bool touchHeld=false;
 static int touchStartX=0,touchStartY=0;
 static bool touchMoved=false;
+void drawDashboard();
 void fetchTop3();
 void drawTouchPage();
 void renderScreen(){if(screenPage==0)drawDashboard();else drawTouchPage();}
