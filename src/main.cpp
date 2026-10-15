@@ -25,6 +25,11 @@ static String periodLabel="Väntar på BC",updatedLabel="Ej hämtat";
 static String apiKey,caPem,apiError="Ej hämtat";
 static bool hasLiveData=false,staleData=false;
 static unsigned long lastFetch=0;
+static uint32_t refreshSeconds=300;
+static String periodStart="",periodEnd="",updatedAt="";
+static int64_t topAmounts[3]={0,0,0};
+static float topHours[3]={0,0,0};
+static int sourceRows=0;
 static bool fetchAttempted=false;
 static const char* apiUrl="https://transformant-top3-api.petersen-tobias.workers.dev/api/top3";
 static String sek(int64_t v){String s=String(v),out;int n=0;for(int i=s.length()-1;i>=0;i--){if(n&&n%3==0)out=" "+out;out=String(s[i])+out;n++;}return out+" kr";}
@@ -61,7 +66,10 @@ void drawDashboard(){
  lcd->drawCircle(120,120,113,rgb(4,32,42));
  lcd->drawCircle(120,120,109,rgb(3,31,37));
  smoothCenter("TRANSFORMANT",39,&FreeSansBold9pt7b,WHITE565);
- smoothCenter("OKTOBER 2026",69,&FreeSansBold9pt7b,WHITE565);
+ static const char* months[]={"JANUARI","FEBRUARI","MARS","APRIL","MAJ","JUNI","JULI","AUGUSTI","SEPTEMBER","OKTOBER","NOVEMBER","DECEMBER"};
+ String monthTitle="TOPP 3";
+ if(periodEnd.length()==10){int m=periodEnd.substring(5,7).toInt();if(m>=1&&m<=12)monthTitle=String(months[m-1])+" "+periodEnd.substring(0,4);}
+ smoothCenter(monthTitle.c_str(),69,&FreeSansBold9pt7b,WHITE565);
  lcd->setFont(nullptr);
  centered(periodLabel.c_str(),81,1,rgb(160,187,197),navy);
  const uint16_t metals[3]={GOLD,SILVER,BRONZE};
@@ -127,11 +135,12 @@ void fetchTop3(){
  for(int i=0;i<3;i++){
    if(i<(int)a.size()){
      names[i]=a[i]["name"].as<String>();
-     amounts[i]=sek(a[i]["amount_sek"].as<int64_t>());
-   }else{names[i]="-";amounts[i]="-";}
+     topAmounts[i]=a[i]["amount_sek"].as<int64_t>();topHours[i]=a[i]["hours"].as<float>();amounts[i]=sek(topAmounts[i]);
+   }else{names[i]="-";amounts[i]="-";topAmounts[i]=0;topHours[i]=0;}
  }
  String start=d["period_start"] | "";String end=d["period_end"] | "";
- if(start.length()==10&&end.length()==10)periodLabel=start.substring(8,10)+"-"+end.substring(8,10)+"/"+end.substring(5,7);
+ periodStart=start;periodEnd=end;updatedAt=d["updated_at"] | "";sourceRows=d["source_rows"] | 0;
+ if(start.length()==10&&end.length()==10)periodLabel=String(start.substring(8,10).toInt())+"/"+String(start.substring(5,7).toInt())+" - "+String(end.substring(8,10).toInt())+"/"+String(end.substring(5,7).toInt());
  time_t now=time(nullptr);struct tm t;
  if(now>1700000000&&localtime_r(&now,&t)){char buf[20];strftime(buf,sizeof(buf),"Uppd %H:%M",&t);updatedLabel=buf;}
  else updatedLabel="Uppdaterad";
@@ -146,7 +155,41 @@ void sendJson(int status, const String& body) {
 
 void setupRoutes() {
   server.on("/", HTTP_GET, []() {
-    server.send(200, "text/html; charset=utf-8", R"HTML(<!doctype html><html lang="sv"><meta name="viewport" content="width=device-width,initial-scale=1"><meta charset="utf-8"><title>TFM Top</title><style>body{font:16px system-ui;background:#10251b;color:#eef;margin:0;padding:24px;max-width:600px}section{background:#1c392b;border-radius:14px;padding:18px;margin:16px 0}button,input{padding:12px;border-radius:8px;border:0;margin:5px}button{background:#61e49b;color:#10251b}input{width:85%}pre{white-space:pre-wrap}</style><h1>Transformant Top 3</h1><p>ESP32 – första utvecklingsversionen</p><section><h2>Wi-Fi</h2><button onclick="scan()">Sök nätverk</button><div id="networks"></div><input id="ssid" placeholder="Nätverksnamn"><input id="password" type="password" placeholder="Wi-Fi-lösenord"><button onclick="save()">Spara och anslut</button><p id="result"></p></section><section><h2>Business Central API</h2><p>Nyckel och CA-certifikat lagras lokalt på enheten.</p><input id="key" type="password" autocomplete="off" placeholder="Ny DEVICE_API_KEY"><textarea id="ca" rows="5" style="width:95%" placeholder="PEM CA-certifikat (-----BEGIN CERTIFICATE-----)"></textarea><button onclick="saveApi()">Spara API-inställningar</button><p id="apiresult"></p></section><section><h2>Status</h2><pre id="status"></pre></section><script>async function scan(){let r=await fetch('/api/wifi/scan');let n=await r.json();document.querySelector('#networks').replaceChildren(...n.map(x=>{let b=document.createElement('button');b.textContent=x.ssid+' ('+x.rssi+' dBm)';b.onclick=()=>document.querySelector('#ssid').value=x.ssid;return b}))}async function save(){let r=await fetch('/api/wifi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid:document.querySelector('#ssid').value,password:document.querySelector('#password').value})});document.querySelector('#result').textContent=await r.text()}async function saveApi(){let key=document.querySelector('#key').value,ca=document.querySelector('#ca').value;let r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key,ca})});document.querySelector('#apiresult').textContent=await r.text();document.querySelector('#key').value=''}async function status(){try{document.querySelector('#status').textContent=JSON.stringify(await (await fetch('/api/status')).json(),null,2)}catch(e){}}status();</script></html>)HTML");
+    server.send(200, "text/html; charset=utf-8", R"HTML(<!doctype html><html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Transformant Top 3</title>
+<style>:root{color-scheme:dark;font-family:system-ui,Segoe UI,sans-serif}*{box-sizing:border-box}body{margin:0;background:#071b1c;color:#e8f7f4}main{max-width:1040px;margin:auto;padding:26px 18px 60px}header{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}h1{margin:0;font-size:clamp(26px,4vw,38px)}h2{margin:0 0 16px;font-size:19px}p{color:#a6c3c0}.tag{border:1px solid #37645d;padding:7px 12px;border-radius:30px;color:#9ce9d0}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-top:22px}.card{background:#102e30;border:1px solid #234648;border-radius:18px;padding:22px}.wide{grid-column:1/-1}.muted{color:#9abbb7}.rows{display:grid;gap:12px}.person{display:grid;grid-template-columns:40px 1fr auto;align-items:center;gap:12px;background:#173a3c;padding:14px;border-radius:12px}.medal{display:grid;place-items:center;width:36px;height:36px;border-radius:50%;background:#e5bc66;color:#172629;font-weight:800}.person:nth-child(2) .medal{background:#becdd3}.person:nth-child(3) .medal{background:#c98c67}.person strong{display:block}.person small{color:#abc9c5}.amount{font-weight:750;color:#80e9c5;white-space:nowrap}label{display:block;margin:14px 0 6px;color:#b6d4d0}input,select,textarea{background:#071d20;color:#e8f7f4;border:1px solid #3b6464;border-radius:10px;padding:12px;width:100%;font:inherit}button{background:#75e5b3;color:#072521;border:0;border-radius:10px;padding:12px 17px;font:inherit;font-weight:700;cursor:pointer;margin-top:12px}button.secondary{background:#254d4c;color:#e8f7f4}button:disabled{opacity:.55}.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.stat{padding:13px;background:#173a3c;border-radius:12px}.stat b{display:block;margin-top:5px;overflow-wrap:anywhere}.notice{min-height:20px;font-size:14px}.ok{color:#80e9b3}.bad{color:#ffae9c}.network{display:flex;justify-content:space-between;gap:10px;width:100%;text-align:left;background:#173a3c;margin-top:7px}.footer{font-size:12px;color:#87aaa6}details{margin-top:15px}summary{cursor:pointer;color:#b8dcd5}code{overflow-wrap:anywhere}@media(max-width:720px){.grid{grid-template-columns:1fr}.wide{grid-column:auto}.person{grid-template-columns:34px 1fr}.amount{grid-column:2}.stats{grid-template-columns:1fr 1fr}}</style></head>
+<body><main><header><div><h1>TRANSFORMANT <span style="color:#83e8c2">TOP 3</span></h1><p>Business Central · Månadens debiteringsvärde</p></div><span class="tag" id="connection">Ansluter…</span></header>
+<div class="grid"><section class="card wide"><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><h2>Topplista</h2><span class="muted" id="period">Väntar på data</span></div><button id="refresh" onclick="refreshNow()">↻ Uppdatera nu</button></div><div class="rows" id="top" style="margin-top:20px"><p>Hämtar uppgifter…</p></div><p class="footer" id="dataInfo"></p></section>
+<section class="card"><h2>Wi-Fi och nätverk</h2><div class="stats"><div class="stat"><span class="muted">Anslutet nätverk</span><b id="ssidNow">–</b></div><div class="stat"><span class="muted">Signal</span><b id="signal">–</b></div><div class="stat"><span class="muted">IP-adress</span><b id="ip">–</b></div><div class="stat"><span class="muted">Enhet</span><b>tfmtop.local</b></div></div><h3>Byt Wi-Fi</h3><button class="secondary" onclick="scan()">Sök tillgängliga nätverk</button><div id="networks"></div><label for="ssid">Nätverksnamn (SSID)</label><input id="ssid" maxlength="32" autocomplete="off" placeholder="Välj nätverk ovan eller skriv manuellt"><label for="password">Lösenord för det nya nätverket</label><input id="password" type="password" autocomplete="new-password"><button onclick="saveWifi()">Spara och byt nätverk</button><p class="notice" id="wifiMsg"></p><p class="footer">Enheten startar om vid nätverksbyte. Anslut till det nya nätverket för att öppna sidan igen.</p></section>
+<section class="card"><h2>Uppdatering och API</h2><div class="stats"><div class="stat"><span class="muted">API-status</span><b id="apiStatus">–</b></div><div class="stat"><span class="muted">Senast uppdaterad</span><b id="updated">–</b></div><div class="stat"><span class="muted">API-nyckel</span><b id="apiConfigured">–</b></div><div class="stat"><span class="muted">HTTPS-certifikat</span><b id="caConfigured">–</b></div></div><label for="interval">Automatisk uppdatering</label><select id="interval"><option value="60">Varje minut</option><option value="120">Varannan minut</option><option value="300">Var 5:e minut</option><option value="600">Var 10:e minut</option><option value="900">Var 15:e minut</option><option value="1800">Var 30:e minut</option><option value="3600">Varje timme</option></select><button onclick="saveInterval()">Spara intervall</button><p class="notice" id="intervalMsg"></p><details><summary>Byt API-nyckel eller CA-certifikat</summary><p>Fyll i båda fälten för att ersätta befintliga uppgifter. Hemliga värden visas aldrig.</p><label for="key">DEVICE_API_KEY</label><input id="key" type="password" autocomplete="new-password"><label for="ca">CA-certifikat (PEM)</label><textarea id="ca" rows="5" placeholder="-----BEGIN CERTIFICATE-----"></textarea><button onclick="saveApi()">Spara API-inställningar</button><p class="notice" id="apiMsg"></p></details></section></div><p class="footer">Enhetens administrationssida är tillgänglig på det lokala nätverket. Begränsa åtkomsten till betrodda användare.</p></main>
+<script>
+const el=id=>document.getElementById(id);
+const money=n=>new Intl.NumberFormat('sv-SE',{maximumFractionDigits:0}).format(n||0)+' kr';
+const dateShort=s=>/^\d{4}-\d\d-\d\d$/.test(s||'')?Number(s.slice(8))+'/'+Number(s.slice(5,7)):'–';
+function message(id,t,ok){el(id).textContent=t;el(id).className='notice '+(ok?'ok':'bad')}
+async function req(path,options){let r=await fetch(path,options);let d=await r.json();if(!r.ok)throw Error(d.error||'HTTP '+r.status);return d}
+function post(body){return {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}}
+function render(d){
+ el('connection').textContent=d.wifi_connected?'● Wi-Fi anslutet':'○ Offline';
+ el('ssidNow').textContent=d.wifi_ssid||'Ej ansluten';el('ip').textContent=d.wifi_ip||d.ip||'–';
+ let db=d.wifi_rssi;el('signal').textContent=d.wifi_connected?(db>=-55?'▂▄▆█':db>=-67?'▂▄▆':db>=-78?'▂▄':'▂')+' '+db+' dBm':'Ingen signal';
+ el('period').textContent=dateShort(d.period_start)+' - '+dateShort(d.period_end);
+ el('apiStatus').textContent=(d.stale?'Äldre data · ':'')+(d.api_status||'–');
+ el('apiConfigured').textContent=d.api_configured?'Konfigurerad':'Saknas';
+ el('caConfigured').textContent=d.ca_configured?'Installerat':'Saknas';
+ el('updated').textContent=d.updated_at?new Date(d.updated_at).toLocaleString('sv-SE',{timeZone:'Europe/Stockholm',dateStyle:'short',timeStyle:'short'}):'Inte ännu';
+ el('dataInfo').textContent=(d.source_rows||0)+' rader från Business Central · '+(d.has_live_data?'Data inläst':'Väntar på första hämtning')+(d.stale?' · Kan vara inaktuell':'');
+ if(document.activeElement!==el('interval'))el('interval').value=String(d.refresh_seconds||300);
+ el('top').replaceChildren(...(d.top3||[]).filter(x=>x.name&&x.name!=='-').map(x=>{let div=document.createElement('div');div.className='person';let m=document.createElement('span');m.className='medal';m.textContent=x.rank;let info=document.createElement('div');let n=document.createElement('strong');n.textContent=x.name;let h=document.createElement('small');h.textContent=Number(x.hours||0).toLocaleString('sv-SE')+' timmar';info.append(n,h);let amount=document.createElement('span');amount.className='amount';amount.textContent=money(x.amount_sek);div.append(m,info,amount);return div}));
+ if(!el('top').children.length)el('top').textContent='Inga topplistedata ännu';
+}
+async function load(){try{render(await req('/api/status'))}catch(e){el('connection').textContent='Kan inte nå enheten'}}
+async function refreshNow(){el('refresh').disabled=true;try{await req('/api/refresh',{method:'POST'});await load()}catch(e){alert('Uppdateringen misslyckades: '+e.message)}finally{el('refresh').disabled=false}}
+async function scan(){el('networks').textContent='Söker…';try{let n=await req('/api/wifi/scan');el('networks').replaceChildren(...n.map(x=>{let b=document.createElement('button');b.className='network';b.textContent=x.ssid+' · '+x.rssi+' dBm'+(x.secure?' 🔒':'');b.onclick=()=>{el('ssid').value=x.ssid;el('password').focus()};return b}));if(!n.length)el('networks').textContent='Inga nätverk hittades'}catch(e){el('networks').textContent=e.message}}
+async function saveWifi(){let ssid=el('ssid').value.trim();if(!ssid){message('wifiMsg','Välj ett nätverk först',false);return}if(!confirm('Byt till '+ssid+'? Enheten startar om.'))return;try{await req('/api/wifi',post({ssid,password:el('password').value}));message('wifiMsg','Sparat. Enheten startar om…',true);el('password').value=''}catch(e){message('wifiMsg',e.message,false)}}
+async function saveInterval(){try{await req('/api/settings',post({refresh_seconds:Number(el('interval').value)}));message('intervalMsg','Intervallet är sparat',true);await load()}catch(e){message('intervalMsg',e.message,false)}}
+async function saveApi(){let key=el('key').value,ca=el('ca').value;if(!key||!ca){message('apiMsg','Fyll i både nyckel och certifikat',false);return}try{await req('/api/config',post({key,ca}));el('key').value='';el('ca').value='';message('apiMsg','API-inställningarna är sparade',true);await load()}catch(e){message('apiMsg',e.message,false)}}
+load();setInterval(load,15000);
+</script></body></html>)HTML");
   });
   server.on("/api/status", HTTP_GET, []() {
     JsonDocument d;
@@ -154,7 +197,18 @@ void setupRoutes() {
     d["wifi_connected"] = WiFi.status() == WL_CONNECTED;
     d["setup_ap"] = apMode;
     d["ip"] = apMode ? WiFi.softAPIP().toString() : WiFi.localIP().toString();
-    d["firmware"] = "0.2.0-api";
+    d["firmware"] = "0.3.0-dashboard";
+    d["wifi_ssid"] = WiFi.status()==WL_CONNECTED?WiFi.SSID():"";
+    d["wifi_rssi"] = WiFi.status()==WL_CONNECTED?WiFi.RSSI():-100;
+    d["wifi_ip"] = WiFi.status()==WL_CONNECTED?WiFi.localIP().toString():"";
+    d["refresh_seconds"] = refreshSeconds;
+    d["last_attempt_seconds_ago"] = fetchAttempted?(millis()-lastFetch)/1000:0;
+    d["period_start"] = periodStart;
+    d["period_end"] = periodEnd;
+    d["updated_at"] = updatedAt;
+    d["source_rows"] = sourceRows;
+    JsonArray top=d["top3"].to<JsonArray>();
+    for(int i=0;i<3;i++){JsonObject item=top.add<JsonObject>();item["rank"]=i+1;item["name"]=names[i];item["amount_sek"]=topAmounts[i];item["hours"]=topHours[i];}
     d["api_configured"] = apiKey.length()>=16;
     d["ca_configured"] = caPem.length()>100;
     d["api_status"] = apiError;
@@ -187,6 +241,18 @@ void setupRoutes() {
     delay(500);
     ESP.restart();
   });
+  server.on("/api/refresh",HTTP_POST,[](){
+    if(WiFi.status()!=WL_CONNECTED){sendJson(503,"{\"error\":\"Wi-Fi offline\"}");return;}
+    fetchAttempted=true;lastFetch=millis();fetchTop3();
+    JsonDocument d;d["status"]=apiError;d["stale"]=staleData;String out;serializeJson(d,out);sendJson(hasLiveData?200:502,out);
+  });
+  server.on("/api/settings",HTTP_POST,[](){
+    JsonDocument d;if(deserializeJson(d,server.arg("plain"))){sendJson(400,"{\"error\":\"Invalid JSON\"}");return;}
+    int seconds=d["refresh_seconds"] | 300;
+    if(seconds<60||seconds>3600){sendJson(400,"{\"error\":\"Interval must be 60-3600 seconds\"}");return;}
+    refreshSeconds=seconds;prefs.putUInt("refresh",refreshSeconds);
+    sendJson(200,"{\"status\":\"saved\"}");
+  });
   server.on("/api/config",HTTP_POST,[](){
     JsonDocument d;if(deserializeJson(d,server.arg("plain"))){sendJson(400,"{\"error\":\"Invalid JSON\"}");return;}
     String key=d["key"] | "";String ca=d["ca"] | "";
@@ -203,7 +269,7 @@ void setup() {
   prefs.begin("tfmtop",false);
   ssid=prefs.getString("ssid","");
   password=prefs.getString("password","");
-  apiKey=prefs.getString("apiKey","");caPem=prefs.getString("caPem","");
+  apiKey=prefs.getString("apiKey","");caPem=prefs.getString("caPem","");refreshSeconds=prefs.getUInt("refresh",300);if(refreshSeconds<60||refreshSeconds>3600)refreshSeconds=300;
   configTzTime("CET-1CEST,M3.5.0/2,M10.5.0/3","pool.ntp.org","time.google.com");
   WiFi.mode(WIFI_AP_STA);
   if(ssid.length()) {
@@ -225,7 +291,7 @@ void setup() {
 
 void loop() {
   server.handleClient();
-  if(WiFi.status()==WL_CONNECTED&&(!fetchAttempted||millis()-lastFetch>=300000UL)){
+  if(WiFi.status()==WL_CONNECTED&&(!fetchAttempted||millis()-lastFetch>=refreshSeconds*1000UL)){
     fetchAttempted=true;lastFetch=millis();fetchTop3();
   }
   if(!apMode && WiFi.status()!=WL_CONNECTED && millis()-lastReconnect>15000) {
