@@ -12,7 +12,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install PlatformIO
-        run: pip install platformio
+        run: pip install platformio esptool
       - name: Compile firmware
         run: pio run
       - name: Create complete flash image
