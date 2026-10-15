@@ -45,23 +45,53 @@ void drawDashboard();
 void fetchTop3();
 void drawTouchPage();
 void drawBatteryPage();
-static float batteryVoltage=0;
+static float batteryVoltage=0; // Smoothed, approximate battery terminal voltage
+static float batteryRawVoltage=0; // Last trimmed ADC reading for diagnostics
 static int batteryPercent=-1;
 static unsigned long lastBatterySample=0;
-// GPIO1 is the board's battery ADC input. The scale is provisional until measured.
-void sampleBattery(){
-  uint32_t sum=0;
-  for(int i=0;i<16;i++){sum+=analogReadMilliVolts(1);delayMicroseconds(200);}
-  float v=(sum/16.0f)*3.0f/1000.0f; // Waveshare 200k/100k divider: VBAT = VADC * 3.
-  if(v<2.7f||v>4.45f){batteryVoltage=0;batteryPercent=-1;return;}
-  batteryVoltage=v;
-  const float volts[]={3.30f,3.50f,3.60f,3.70f,3.75f,3.80f,3.85f,3.90f,4.00f,4.10f,4.20f};
-  const int pct[]={0,5,10,20,30,40,50,60,75,90,100};
-  batteryPercent=100;
+static bool batteryInitialized=false;
+// GPIO1 uses a nominal 200k/100k divider (3x). Calibrate this scale with a meter
+// if absolute voltage accuracy is needed; it is not a fuel gauge.
+static constexpr float BATTERY_ADC_SCALE=3.0f;
+static int estimatedBatteryPercent(float v){
+  // Approximate resting 1-cell LiPo curve; readings under load/charge differ.
+  static const float volts[]={3.30f,3.50f,3.60f,3.70f,3.75f,3.80f,3.85f,3.90f,4.00f,4.10f,4.20f};
+  static const int pct[]={0,5,10,20,30,40,50,60,75,90,100};
+  if(v<=volts[0])return 0;
   for(int i=1;i<11;i++)if(v<volts[i]){
-    batteryPercent=pct[i-1]+(int)((v-volts[i-1])*(pct[i]-pct[i-1])/(volts[i]-volts[i-1]));
-    break;
+    return constrain((int)lroundf(pct[i-1]+(v-volts[i-1])*(pct[i]-pct[i-1])/(volts[i]-volts[i-1])),0,100);
   }
+  return 100;
+}
+void sampleBattery(){
+  // Median-like trimmed mean suppresses ADC spikes and transient Wi-Fi noise.
+  uint16_t samples[25];
+  for(int i=0;i<25;i++){
+    samples[i]=(uint16_t)analogReadMilliVolts(1);
+    delayMicroseconds(250);
+  }
+  for(int i=1;i<25;i++){
+    uint16_t value=samples[i];int j=i-1;
+    while(j>=0 && samples[j]>value){samples[j+1]=samples[j];--j;}
+    samples[j+1]=value;
+  }
+  uint32_t sum=0;
+  for(int i=5;i<20;i++)sum+=samples[i]; // Discard five high and five low.
+  float measured=(sum/15.0f)*BATTERY_ADC_SCALE/1000.0f;
+  if(measured<2.7f || measured>4.45f){
+    // Do not display a fabricated 0% after a single bad ADC reading.
+    if(!batteryInitialized){batteryVoltage=0;batteryPercent=-1;}
+    return;
+  }
+  batteryRawVoltage=measured;
+  if(!batteryInitialized){
+    batteryVoltage=measured;
+    batteryInitialized=true;
+  }else{
+    // Smooth the UI; roughly 1-minute response with 15-second sampling.
+    batteryVoltage+=0.20f*(measured-batteryVoltage);
+  }
+  batteryPercent=estimatedBatteryPercent(batteryVoltage);
 }
 void renderScreen(){if(screenPage==0)drawDashboard();else if(screenPage==1)drawTouchPage();else drawBatteryPage();}
 
@@ -161,8 +191,8 @@ void drawBatteryPage(){
  centered(percentage.c_str(),123,3,WHITE565,navy);
  String voltage=batteryVoltage>0?String(batteryVoltage,2)+" V":"Ingen matning";
  centered(voltage.c_str(),158,1,mint,navy);
- centered("Laddning ej avlast",180,1,GOLD,navy);
- centered("Procent ar uppskattad",195,1,rgb(157,186,189),navy);
+ centered("Laddstatus okand",180,1,GOLD,navy);
+ centered("Procent uppskattad",195,1,rgb(157,186,189),navy);
  centered("Svep for att byta sida",210,1,rgb(157,186,189),navy);
 }
 void setupTouch(){
@@ -466,8 +496,8 @@ void loop() {
   server.handleClient();
   pollTouch();
   if(millis()-lastBatterySample>15000){
-    lastBatterySample=millis();int old=batteryPercent;sampleBattery();
-    if(screenPage==2&&old!=batteryPercent)drawBatteryPage();
+    lastBatterySample=millis();int old=batteryPercent;float oldVoltage=batteryVoltage;sampleBattery();
+    if(screenPage==2&&(old!=batteryPercent || fabsf(oldVoltage-batteryVoltage)>=0.01f))drawBatteryPage();
   }
   if(WiFi.status()==WL_CONNECTED&&(!fetchAttempted||millis()-lastFetch>=refreshSeconds*1000UL)){
     fetchAttempted=true;lastFetch=millis();fetchTop3();
