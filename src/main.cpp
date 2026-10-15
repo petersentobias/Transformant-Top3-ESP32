@@ -8,8 +8,9 @@
 #include <Preferences.h>
 #include <ArduinoJson.h>
 #include <Arduino_GFX_Library.h>
-#include <Fonts/FreeSans9pt7b.h>
-#include <Fonts/FreeSansBold9pt7b.h>
+#include <gfxfont.h>
+#include <FreeSans9pt7b.h>
+#include <FreeSansBold9pt7b.h>
 // Same GC9A01A SPI display wiring as capsule-radar-128/src/boards/board_lcd_128.h
 static Arduino_DataBus *lcdBus = new Arduino_ESP32SPI(8, 9, 10, 11, 12);
 static Arduino_GFX *lcd = new Arduino_GC9A01(lcdBus, 14, 0, true);
