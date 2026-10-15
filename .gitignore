@@ -1,0 +1,10 @@
+.pio/
+.vscode/
+.env
+.env.*
+!.env.example
+secrets.*
+*.bin
+*.elf
+*.map
+.DS_Store
