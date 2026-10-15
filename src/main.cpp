@@ -5,6 +5,8 @@
 #include <Preferences.h>
 #include <ArduinoJson.h>
 #include <Arduino_GFX_Library.h>
+#include <Fonts/FreeSans9pt7b.h>
+#include <Fonts/FreeSansBold9pt7b.h>
 // Same GC9A01A SPI display wiring as capsule-radar-128/src/boards/board_lcd_128.h
 static Arduino_DataBus *lcdBus = new Arduino_ESP32SPI(8, 9, 10, 11, 12);
 static Arduino_GFX *lcd = new Arduino_GC9A01(lcdBus, 14, 0, true);
@@ -27,43 +29,53 @@ static void wifiBars(int x,int y){
  int n=dbm>=-55?4:dbm>=-67?3:dbm>=-78?2:dbm>=-88?1:0;
  for(int i=0;i<4;i++)lcd->fillRoundRect(x+i*7,y-(i+1)*3,5,(i+1)*3,1,i<n?MINT:rgb(42,76,82));
 }
+// Proportional FreeSans fonts: vector-like GFX glyphs at native pixel size.
+// The GFX FreeFonts are monochrome (not true antialiasing), but much less blocky
+// than doubling the built-in 5x7 font. No huge frame buffer is needed.
+static void smoothText(const char* str,int x,int baseline,const GFXfont* font,uint16_t color){
+ lcd->setFont(font);lcd->setTextSize(1);lcd->setTextColor(color);
+ lcd->setCursor(x,baseline);lcd->print(str);
+}
+static void smoothCenter(const char* str,int baseline,const GFXfont* font,uint16_t color){
+ lcd->setFont(font);lcd->setTextSize(1);
+ int16_t x1,y1;uint16_t w,h;lcd->getTextBounds(str,0,baseline,&x1,&y1,&w,&h);
+ smoothText(str,120-(int)w/2-x1,baseline,font,color);
+}
 void drawDashboard(){
- // Near-black navy backdrop with restrained turquoise glow.
- lcd->fillScreen(rgb(1,8,13));
- for(int r=109;r>=36;r-=3){
-   int step=(109-r)/3;
-   lcd->drawCircle(120,120,r,rgb(2+step/7,19+step/3,25+step/3));
- }
- lcd->drawCircle(120,120,116,rgb(12,65,83));
- lcd->drawCircle(120,120,114,rgb(3,32,43));
- // A smaller brand header and more generous breathing room.
- centered("TRANSFORMANT",26,2,WHITE565,rgb(1,8,13));
- centered("OKTOBER 2026",60,2,WHITE565,rgb(1,8,13));
- centered("1-15 okt",81,1,rgb(158,184,194),rgb(1,8,13));
+ const uint16_t navy=rgb(1,9,14),panel=rgb(4,22,29);
+ lcd->fillScreen(navy);
+ // Restrained accent arcs rather than full-screen bright blue rings.
+ lcd->drawCircle(120,120,115,rgb(9,49,62));
+ lcd->drawCircle(120,120,113,rgb(4,32,42));
+ lcd->drawArc(120,120,111,110,130,220,rgb(5,73,68));
+ smoothCenter("TRANSFORMANT",39,&FreeSansBold9pt7b,WHITE565);
+ smoothCenter("OKTOBER 2026",69,&FreeSansBold9pt7b,WHITE565);
+ lcd->setFont(nullptr);
+ centered("1-15 okt",81,1,rgb(160,187,197),navy);
  const uint16_t metals[3]={GOLD,SILVER,BRONZE};
- const uint16_t darks[3]={rgb(125,77,8),rgb(89,104,128),rgb(120,63,32)};
+ const uint16_t shades[3]={rgb(112,68,9),rgb(85,103,120),rgb(120,67,34)};
  for(int i=0;i<3;i++){
-   const int y=96+i*32, x=25,w=190;
-   lcd->fillRoundRect(x+1,y+3,w-2,27,8,rgb(0,5,9));
-   lcd->fillRoundRect(x,y,w,27,8,rgb(3,18,25));
-   lcd->drawFastHLine(x+24,y+28,w-30,darks[i]);
-   lcd->drawFastHLine(x+32,y+28,w-55,metals[i]);
-   // Embossed medal with ribbon, shadow, concentric rim and highlight.
-   lcd->fillTriangle(x+12,y+2,x+24,y+2,x+18,y+16,darks[i]);
-   lcd->fillCircle(x+18,y+16,12,rgb(1,9,13));
-   lcd->fillCircle(x+18,y+15,11,darks[i]);
+   int y=95+i*32,x=25,w=190;
+   lcd->fillRoundRect(x+1,y+3,w-2,28,8,rgb(0,4,7));
+   lcd->fillRoundRect(x,y,w,28,8,panel);
+   lcd->drawFastHLine(x+24,y+28,w-28,shades[i]);
+   lcd->drawFastHLine(x+35,y+28,w-70,metals[i]);
+   lcd->fillTriangle(x+13,y+1,x+23,y+1,x+18,y+14,shades[i]);
+   lcd->fillCircle(x+18,y+14,12,rgb(0,7,11));
    lcd->fillCircle(x+18,y+14,10,metals[i]);
-   lcd->drawCircle(x+18,y+14,8,rgb(255,226,166));
-   lcd->drawFastHLine(x+13,y+7,9,rgb(255,244,205));
-   label(i==0?"1":i==1?"2":"3",x+15,y+11,1,rgb(15,26,32),metals[i]);
-   label(demoNames[i],x+34,y+3,1,WHITE565,rgb(3,18,25));
-   label(demoAmounts[i],x+34,y+15,1,MINT,rgb(3,18,25));
+   lcd->drawCircle(x+18,y+14,8,rgb(255,225,165));
+   lcd->setFont(nullptr);
+   label(i==0?"1":i==1?"2":"3",x+15,y+10,1,rgb(15,26,32),metals[i]);
+   smoothText(demoNames[i],x+34,y+12,&FreeSans9pt7b,WHITE565);
+   lcd->setFont(nullptr);
+   label(demoAmounts[i],x+35,y+18,1,MINT,panel);
  }
+ lcd->setFont(nullptr);
  lcd->drawFastHLine(65,198,110,rgb(38,71,82));
- label("Uppd 14:27",65,205,1,rgb(162,188,197),rgb(1,8,13));
+ label("Uppd 14:27",65,205,1,rgb(162,188,197),navy);
  wifiBars(139,213);
- label("WiFi",170,205,1,MINT,rgb(1,8,13));
- Serial.println("[lcd] dark navy leaderboard rendered");
+ label("WiFi",170,205,1,MINT,navy);
+ Serial.println("[lcd] proportional font dashboard rendered");
 }
 
 void drawBootScreen() {
