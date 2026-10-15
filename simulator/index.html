@@ -16,11 +16,30 @@ const glow=ctx.createRadialGradient(120,105,25,120,120,135);glow.addColorStop(0,
 ctx.strokeStyle=s.accent+'88';ctx.lineWidth=1;ctx.beginPath();ctx.arc(120,120,115,0,Math.PI*2);ctx.stroke();
 textFit(s.brand,120,29,150,12*sc,s.accent,'700');textFit(s.title,120,54,170,26*sc,'#fff','800');
 ctx.strokeStyle=s.accent;ctx.beginPath();ctx.moveTo(76,73);ctx.lineTo(164,73);ctx.stroke();textFit(s.period,120,83,145,9*sc,'#b8c7d9','500');
-const colors=['#ffd36a','#d9e2ef','#db9964'];for(let i=0;i<3;i++){let y=100+i*s.rowSpacing,x=i===2?37:28,w=240-2*x;ctx.fillStyle='#10233b';ctx.beginPath();ctx.roundRect(x,y,w,32,9);ctx.fill();ctx.strokeStyle='#244866';ctx.stroke();
-ctx.fillStyle=colors[i];ctx.beginPath();ctx.arc(x+17,y+16,11,0,Math.PI*2);ctx.fill();textFit(String(i+1),x+17,y+16,16,11,'#101923','800');
-let left=x+36,right=x+w-8,avail=right-left;
-ctx.textAlign='left';ctx.fillStyle='#fff';ctx.font='700 '+(10*sc)+'px system-ui';let name=s.people[i].name.toUpperCase();while(ctx.measureText(name).width>avail&&name.length>1)name=name.slice(0,-2)+'…';ctx.textBaseline='middle';ctx.fillText(name,left,y+10);
-let amount=s.people[i].amount+' kr';ctx.font='600 '+(11*sc)+'px system-ui';ctx.fillStyle=s.accent;while(ctx.measureText(amount).width>avail&&amount.length>1)amount=amount.slice(0,-2)+'…';ctx.fillText(amount,left,y+23);
-}textFit('DEMODATA',120,220,100,8,'#9db1ca','500');ctx.restore();}
+const colors=[['#fff4bd','#f4b83e','#8c5811'],['#ffffff','#aebed3','#566477'],['#ffe0b3','#ca8650','#714125']];
+for(let i=0;i<3;i++){
+ let y=100+i*s.rowSpacing,x=i===2?37:28,w=240-2*x;
+ // Raised glass/metal card with an offset shadow and a beveled rim.
+ ctx.save();ctx.shadowColor='#000c';ctx.shadowBlur=9;ctx.shadowOffsetY=4;
+ let card=ctx.createLinearGradient(x,y,x,y+32);card.addColorStop(0,'#244669');card.addColorStop(.35,'#112943');card.addColorStop(1,'#071626');
+ ctx.fillStyle=card;ctx.beginPath();ctx.roundRect(x,y,w,32,9);ctx.fill();ctx.restore();
+ ctx.strokeStyle='#5b8db077';ctx.lineWidth=.8;ctx.beginPath();ctx.roundRect(x+.5,y+.5,w-1,31,9);ctx.stroke();
+ ctx.strokeStyle='#b9e4ff44';ctx.beginPath();ctx.moveTo(x+12,y+2);ctx.lineTo(x+w-12,y+2);ctx.stroke();
+ // Metallic embossed medal, complete with specular reflection.
+ let mx=x+17,my=y+16;
+ ctx.save();ctx.shadowColor=colors[i][1]+'99';ctx.shadowBlur=6;
+ let metal=ctx.createLinearGradient(mx-10,my-11,mx+11,my+11);metal.addColorStop(0,colors[i][0]);metal.addColorStop(.48,colors[i][1]);metal.addColorStop(1,colors[i][2]);
+ ctx.fillStyle=metal;ctx.beginPath();ctx.arc(mx,my,11,0,Math.PI*2);ctx.fill();ctx.restore();
+ ctx.strokeStyle=colors[i][0];ctx.lineWidth=1;ctx.beginPath();ctx.arc(mx,my,9,0,Math.PI*2);ctx.stroke();
+ textFit(String(i+1),mx,my,16,11,'#172132','800');
+ let left=x+36,right=x+w-8,avail=right-left;
+ ctx.textAlign='left';ctx.fillStyle='#f8fbff';ctx.font='700 '+(10*sc)+'px system-ui';let name=s.people[i].name.toUpperCase();
+ while(ctx.measureText(name).width>avail&&name.length>1)name=name.slice(0,-2)+'…';
+ ctx.textBaseline='middle';ctx.fillText(name,left,y+10);
+ let amount=s.people[i].amount+' kr';ctx.font='700 '+(11*sc)+'px system-ui';ctx.fillStyle='#8ddaff';
+ while(ctx.measureText(amount).width>avail&&amount.length>1)amount=amount.slice(0,-2)+'…';
+ ctx.fillText(amount,left,y+23);
+}
+textFit('DEMODATA',120,220,100,8,'#9db1ca','500');ctx.restore();}
 document.querySelectorAll('input').forEach(e=>e.addEventListener('input',()=>{$('scaleValue').textContent=$('scale').value+'%';$('spacingValue').textContent=$('spacing').value+' px';draw()}));$('png').onclick=()=>{const a=document.createElement('a');a.download='transformant-top3-preview.png';a.href=canvas.toDataURL('image/png');a.click()};$('export').onclick=()=>navigator.clipboard.writeText(JSON.stringify(state(),null,2)).then(()=>{$('export').textContent='Kopierat!';setTimeout(()=>$('export').textContent='Kopiera designinställningar (JSON)',1600)});draw();
 </script></body></html>
