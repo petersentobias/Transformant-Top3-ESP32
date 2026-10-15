@@ -175,40 +175,51 @@ void setupTouch(){
 }
 void pollTouch(){
  if(!touchReady)return;
- // Use elapsed time from a past event; never store a future timestamp.
- if(millis()-touchDebounce<350)return;
+ // CST816S register 0x02 contains the number of detected fingers.
+ // Ignore stale gesture codes: navigation requires a real touch trajectory.
+ if(millis()-touchDebounce<70)return;
  Wire.beginTransmission(0x15);Wire.write(0x01);
  if(Wire.endTransmission(false)!=0)return;
  if(Wire.requestFrom((uint8_t)0x15,(uint8_t)6)!=(size_t)6)return;
- uint8_t gesture=Wire.read();Wire.read();
+ Wire.read(); // Gesture ID alone is not reliable for navigation.
+ uint8_t fingers=Wire.read();
  uint8_t xh=Wire.read(),xl=Wire.read(),yh=Wire.read(),yl=Wire.read();
  int x=((xh&0x0F)<<8)|xl,y=((yh&0x0F)<<8)|yl;
- bool touching=(xh>>6)==0 && x<240 && y<240;
- // Exactly one navigation event per touch sequence.
- if(!touchMoved && (gesture==4 || gesture==3)){
-   screenPage=(screenPage+(gesture==4?1:2))%3;
-   touchMoved=true;touchHeld=true;touchDebounce=millis();
-   renderScreen();return;
- }
- if(touching&&!touchHeld){
-   touchStartX=x;touchStartY=y;touchMoved=false;touchHeld=true;
- }
- if(touching&&touchHeld&&!touchMoved){
-   if(abs(x-touchStartX)>65 && abs(y-touchStartY)<90){
+ uint8_t event=xh>>6;
+ bool touching=fingers==1 && (event==0||event==2) && x<240 && y<240;
+ static unsigned long started=0;
+ static unsigned long lastContact=0;
+ static int stableSamples=0;
+ if(touching){
+   lastContact=millis();
+   if(!touchHeld){
+     touchHeld=true;touchMoved=false;touchStartX=x;touchStartY=y;
+     started=millis();stableSamples=1;
+     return;
+   }
+   if(stableSamples<100)stableSamples++;
+   if(!touchMoved && stableSamples>=3 && millis()-started>=70 &&
+      millis()-started<=1200 && abs(y-touchStartY)<75 &&
+      abs(x-touchStartX)>=75){
      screenPage=(screenPage+(x>touchStartX?1:2))%3;
      touchMoved=true;touchDebounce=millis();
-     renderScreen();return;
+     renderScreen();
+     return;
    }
-   if(abs(x-touchStartX)>22||abs(y-touchStartY)>22)touchMoved=true;
+   if(abs(y-touchStartY)>75)touchMoved=true;
+   return;
  }
- if(!touching&&touchHeld){
-   if(screenPage==1&&!touchMoved&&touchStartX>=43&&touchStartX<=197&&touchStartY>=97&&touchStartY<=164){
+ if(touchHeld && millis()-lastContact>=100){
+   // Only deliberate, stationary taps activate the update button.
+   if(screenPage==1 && !touchMoved && stableSamples>=3 &&
+      millis()-started>=70 && millis()-started<1200 &&
+      touchStartX>=43 && touchStartX<=197 && touchStartY>=97 && touchStartY<=164){
      fetchAttempted=true;lastFetch=millis();
      lcd->fillRoundRect(43,97,154,67,18,rgb(31,104,92));
      smoothCenter("HAMTAR...",137,&FreeSansBold9pt7b,WHITE565);
      fetchTop3();drawTouchPage();
    }
-   touchHeld=false;touchMoved=false;touchDebounce=millis();
+   touchHeld=false;touchMoved=false;stableSamples=0;touchDebounce=millis();
  }
 }
 void drawBootScreen() {
