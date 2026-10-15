@@ -17,7 +17,7 @@ jobs:
         run: pio run
       - name: Create complete flash image
         run: |
-          python -m esptool --chip esp32s3 merge_bin -o .pio/build/waveshare_s3/tfmtop-full-flash.bin --flash_mode dio --flash_freq 80m --flash_size 8MB 0x0000 .pio/build/waveshare_s3/bootloader.bin 0x8000 .pio/build/waveshare_s3/partitions.bin 0xe000 .pio/build/waveshare_s3/boot_app0.bin 0x10000 .pio/build/waveshare_s3/firmware.bin
+          python -m esptool --chip esp32s3 merge_bin -o .pio/build/waveshare_s3/tfmtop-full-flash.bin --flash_mode dio --flash_freq 80m --flash_size 8MB 0x0000 .pio/build/waveshare_s3/bootloader.bin 0x8000 .pio/build/waveshare_s3/partitions.bin 0x10000 .pio/build/waveshare_s3/firmware.bin
       - name: Upload firmware artifact
         uses: actions/upload-artifact@v4
         with:
