@@ -9,7 +9,7 @@
 const $=id=>document.getElementById(id), canvas=$('screen'), ctx=canvas.getContext('2d');
 const defaults=[['Anna Andersson','184 500'],['Erik Svensson','171 200'],['Maria Lind','158 900']];
 $('people').innerHTML=defaults.map((p,i)=>'<div class="person"><div><label>Plats '+(i+1)+' – namn</label><input id="name'+i+'" maxlength="18" value="'+p[0]+'"></div><div><label>Belopp (kr)</label><input id="amount'+i+'" maxlength="14" value="'+p[1]+'"></div></div>').join('');
-function state(){return {background:$('bg').value,accent:$('accent').value,title:$('title').value,brand:$('brand').value,period:$('period').value,textScale:Number($('scale').value)/100,rowSpacing:Number($('spacing').value),people:defaults.map((_,i)=>({name:$('name'+i).value,amount:$('amount'+i).value}))};}
+function state(){return {background:$('bg').value,accent:$('accent').value,title:'',brand:$('brand').value,period:$('period').value,textScale:Number($('scale').value)/100,rowSpacing:Number($('spacing').value),people:defaults.map((_,i)=>({name:$('name'+i).value,amount:$('amount'+i).value}))};}
 function textFit(t,x,y,maxWidth,size,color,weight='600'){ctx.font=weight+' '+size+'px system-ui,sans-serif';ctx.fillStyle=color;ctx.textAlign='center';ctx.textBaseline='middle';while(ctx.measureText(t).width>maxWidth&&size>7){size-=.5;ctx.font=weight+' '+size+'px system-ui,sans-serif'}ctx.fillText(t,x,y);}
 function draw(){
  const s=state(),sc=s.textScale;ctx.clearRect(0,0,240,240);ctx.save();ctx.beginPath();ctx.arc(120,120,120,0,Math.PI*2);ctx.clip();
