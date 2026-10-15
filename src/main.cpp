@@ -9,58 +9,55 @@
 static Arduino_DataBus *lcdBus = new Arduino_ESP32SPI(8, 9, 10, 11, 12);
 static Arduino_GFX *lcd = new Arduino_GC9A01(lcdBus, 14, 0, true);
 
-// Round 240x240 screen: content is placed within the circle's safe area.
-// All measurements are explicit; no long title or amount can cross the rim.
-static constexpr uint16_t BG=0x0000, PANEL=0x0863, PANEL_EDGE=0x1188;
-static constexpr uint16_t BLUE=0x05BF, WHITE565=0xFFFF, SOFT=0xBDF7;
-static constexpr uint16_t GOLD=0xFEA0, SILVER=0xC638, BRONZE=0xB365;
-static const char* demoNames[3]={"ANNA","ERIK","MARIA"};
-static const char* demoAmounts[3]={"184 500","171 200","158 900"};
-
-void centeredLabel(const char* value,int centerX,int top,uint8_t size,uint16_t ink,uint16_t background) {
-  // Built-in GFX 5x7 font advances by 6 pixels per character.
-  int width=(int)strlen(value)*6*size;
-  lcd->setTextSize(size);
-  lcd->setTextColor(ink,background);
-  lcd->setCursor(centerX-width/2,top);
-  lcd->print(value);
+// Compact reference-inspired UI for the 240x240 round GC9A01 display.
+// Firmware uses bitmap fonts, so visual typography will differ from HTML Canvas.
+static constexpr uint16_t BG=0x0022, WHITE565=0xF7FF, MINT=0x6F77;
+static constexpr uint16_t GOLD=0xFE80, SILVER=0xCE79, BRONZE=0xD3C9;
+static const char* demoNames[3]={"Anna Andersson","Erik Svensson","Maria Lind"};
+static const char* demoAmounts[3]={"184 500 kr","171 200 kr","158 900 kr"};
+static uint16_t rgb(uint8_t r,uint8_t g,uint8_t b){return lcd->color565(r,g,b);}
+static void label(const char* t,int x,int y,int scale,uint16_t fg,uint16_t bg){
+ lcd->setTextSize(scale);lcd->setTextColor(fg,bg);lcd->setCursor(x,y);lcd->print(t);
 }
-
-void drawDashboard() {
-  lcd->fillScreen(BG);
-  // Thin framing ring, not a thick neon border competing with the figures.
-  lcd->drawCircle(120,120,117,PANEL_EDGE);
-  lcd->drawCircle(120,120,115,0x0092);
-
-  // Brand header: deliberately compact, entirely inside the circle.
-  centeredLabel("TRANSFORMANT",120,24,1,BLUE,BG);
-  centeredLabel("TOP 3",120,41,3,WHITE565,BG);
-  lcd->drawFastHLine(73,72,94,BLUE);
-  centeredLabel("OKTOBER 2026",120,78,1,SOFT,BG);
-
-  const uint16_t medals[3]={GOLD,SILVER,BRONZE};
-  for(int i=0;i<3;i++){
-    const int y=99+i*37;
-    // Widths are reduced toward the lower arc to prevent edge clipping.
-    const int x=(i==2)?39:30;
-    const int w=(i==2)?162:180;
-    lcd->fillRoundRect(x,y,w,32,9,PANEL);
-    lcd->drawRoundRect(x,y,w,32,9,PANEL_EDGE);
-    lcd->fillCircle(x+17,y+16,11,medals[i]);
-    centeredLabel(i==0?"1":(i==1?"2":"3"),x+17,y+12,1,BG,medals[i]);
-    lcd->setTextSize(1);
-    lcd->setTextColor(WHITE565,PANEL);
-    lcd->setCursor(x+34,y+5);
-    lcd->print(demoNames[i]);
-    lcd->setTextColor(BLUE,PANEL);
-    lcd->setCursor(x+34,y+18);
-    lcd->print(demoAmounts[i]);
-    lcd->setTextColor(SOFT,PANEL);
-    lcd->setCursor(x+w-28,y+18);
-    lcd->print("kr");
-  }
-  centeredLabel("DEMODATA",120,216,1,SOFT,BG);
-  Serial.println("[lcd] centered round dashboard rendered");
+static void centered(const char* t,int y,int scale,uint16_t fg,uint16_t bg){
+ int w=(int)strlen(t)*6*scale;label(t,120-w/2,y,scale,fg,bg);
+}
+static void wifiBars(int x,int y){
+ int dbm=WiFi.status()==WL_CONNECTED?WiFi.RSSI():-100;
+ int n=dbm>=-55?4:dbm>=-67?3:dbm>=-78?2:dbm>=-88?1:0;
+ for(int i=0;i<4;i++)lcd->fillRoundRect(x+i*7,y-(i+1)*3,5,(i+1)*3,1,i<n?MINT:rgb(42,76,82));
+}
+void drawDashboard(){
+ // Radial-style navy bands give depth without allocating a framebuffer.
+ lcd->fillScreen(BG);
+ for(int r=112;r>=32;r-=4){
+   int k=(112-r)/4;
+   lcd->drawCircle(120,118,r,rgb(2+k/4,19+k/2,27+k/2));
+ }
+ lcd->drawCircle(120,120,116,rgb(12,76,103));
+ lcd->drawCircle(120,120,114,rgb(5,36,52));
+ centered("TRANSFORMANT",25,2,WHITE565,BG);
+ centered("OKTOBER 2026",59,2,WHITE565,BG);
+ centered("1-15 okt",80,1,rgb(164,195,205),BG);
+ const uint16_t metals[3]={GOLD,SILVER,BRONZE};
+ for(int i=0;i<3;i++){
+   const int y=98+i*34, x=25, w=190;
+   lcd->fillRoundRect(x,y+2,w,29,7,rgb(1,9,14));
+   lcd->fillRoundRect(x,y,w,28,7,rgb(4,24,32));
+   lcd->drawFastHLine(x+23,y+29,w-28,metals[i]);
+   lcd->fillRect(x+11,y-3,13,8,metals[i]);
+   lcd->fillCircle(x+18,y+15,11,metals[i]);
+   lcd->drawCircle(x+18,y+15,9,rgb(255,235,183));
+   label(i==0?"1":i==1?"2":"3",x+15,y+11,1,rgb(15,26,32),metals[i]);
+   // 5x7 bitmap font: two text lines avoid overlapping names and SEK values.
+   label(demoNames[i],x+34,y+5,1,WHITE565,rgb(4,24,32));
+   label(demoAmounts[i],x+34,y+17,1,MINT,rgb(4,24,32));
+ }
+ lcd->drawFastHLine(63,201,114,rgb(46,81,94));
+ label("Uppd 14:27",65,207,1,rgb(172,202,211),BG);
+ wifiBars(139,214);
+ label("WiFi",170,207,1,MINT,BG);
+ Serial.println("[lcd] reference-inspired dashboard rendered");
 }
 
 void drawBootScreen() {
