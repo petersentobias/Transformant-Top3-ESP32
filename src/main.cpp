@@ -4,35 +4,32 @@
 #include <ESPmDNS.h>
 #include <Preferences.h>
 #include <ArduinoJson.h>
-#include <TFT_eSPI.h>
-
-TFT_eSPI tft = TFT_eSPI();
+#include <Arduino_GFX_Library.h>
+// Same GC9A01A SPI display wiring as capsule-radar-128/src/boards/board_lcd_128.h
+static Arduino_DataBus *lcdBus = new Arduino_ESP32SPI(8, 9, 10, 11, 12);
+static Arduino_GFX *lcd = new Arduino_GC9A01(lcdBus, 14, 0, true);
 
 void drawBootScreen() {
   pinMode(2, OUTPUT);
   digitalWrite(2, HIGH);
-  Serial.println("LCD: initializing GC9A01A");
-  tft.init();
-  Serial.println("LCD: initialized");
-  tft.setRotation(0);
-  tft.fillScreen(TFT_RED);
-  delay(600);
-  tft.fillScreen(TFT_GREEN);
-  delay(600);
-  tft.fillScreen(TFT_BLUE);
-  delay(600);
-  tft.fillScreen(TFT_BLACK);
-  tft.drawCircle(120, 120, 116, TFT_DARKGREY);
-  tft.setTextDatum(MC_DATUM);
-  tft.setTextColor(TFT_GREEN, TFT_BLACK);
-  tft.drawString("TRANSFORMANT", 120, 78, 2);
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.drawString("TOP 3", 120, 116, 4);
-  tft.setTextColor(TFT_CYAN, TFT_BLACK);
-  tft.drawString("LCD TEST OK", 120, 157, 2);
-  tft.drawString("v0.2", 120, 180, 2);
+  Serial.println("[lcd] Arduino_GFX GC9A01 begin");
+  if (!lcd->begin(40000000)) {
+    Serial.println("[lcd] initialization failed");
+    return;
+  }
+  lcd->fillScreen(RED); delay(500);
+  lcd->fillScreen(GREEN); delay(500);
+  lcd->fillScreen(BLUE); delay(500);
+  lcd->fillScreen(BLACK);
+  lcd->setTextColor(WHITE);
+  lcd->setTextSize(2);
+  lcd->setCursor(40, 85);
+  lcd->print("TFM TOP 3");
+  lcd->setTextSize(1);
+  lcd->setCursor(53, 135);
+  lcd->print("LCD TEST OK");
+  Serial.println("[lcd] test drawn");
 }
-
 
 WebServer server(80);
 Preferences prefs;
