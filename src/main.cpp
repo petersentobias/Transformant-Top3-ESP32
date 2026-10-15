@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include <Wire.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <time.h>
@@ -34,6 +35,15 @@ static int64_t topAmounts[3]={0,0,0};
 static float topHours[3]={0,0,0};
 static int sourceRows=0;
 static bool fetchAttempted=false;
+static bool touchReady=false;
+static uint8_t screenPage=0;
+static unsigned long touchDebounce=0;
+static bool touchHeld=false;
+static int touchStartX=0,touchStartY=0;
+static bool touchMoved=false;
+void drawTouchPage();
+void renderScreen(){if(screenPage==0)drawDashboard();else drawTouchPage();}
+
 static const char* apiUrl="https://transformant-top3-api.petersen-tobias.workers.dev/api/top3";
 static String sek(int64_t v){String s=String(v),out;int n=0;for(int i=s.length()-1;i>=0;i--){if(n&&n%3==0)out=" "+out;out=String(s[i])+out;n++;}return out+" kr";}
 
@@ -101,6 +111,54 @@ void drawDashboard(){
  Serial.println("[lcd] proportional font dashboard rendered");
 }
 
+void drawTouchPage(){
+ const uint16_t navy=rgb(1,9,14),mint=rgb(111,233,186);
+ lcd->fillScreen(navy);
+ lcd->drawCircle(120,120,114,rgb(9,49,62));
+ smoothCenter("TRANSFORMANT",44,&FreeSansBold9pt7b,WHITE565);
+ smoothCenter("UPPDATERA",80,&FreeSansBold9pt7b,WHITE565);
+ lcd->fillRoundRect(43,97,154,67,18,rgb(16,81,72));
+ lcd->drawRoundRect(43,97,154,67,18,mint);
+ smoothCenter("HAMTA NU",137,&FreeSansBold9pt7b,WHITE565);
+ lcd->setFont(nullptr);
+ centered(apiError=="OK"?"Senast: OK":apiError.c_str(),180,1,mint,navy);
+ centered("Svep vanster: Topplista",204,1,rgb(157,186,189),navy);
+}
+void setupTouch(){
+ pinMode(13,OUTPUT);digitalWrite(13,LOW);delay(20);digitalWrite(13,HIGH);delay(80);
+ pinMode(5,INPUT_PULLUP);
+ Wire.begin(6,7);Wire.setClock(400000);
+ Wire.beginTransmission(0x15);
+ touchReady=Wire.endTransmission()==0;
+ Serial.printf("[touch] CST816S: %s\\n",touchReady?"detected":"not found");
+}
+void pollTouch(){
+ if(!touchReady||millis()-touchDebounce<50)return;
+ Wire.beginTransmission(0x15);Wire.write(0x01);
+ if(Wire.endTransmission(false)!=0)return;
+ if(Wire.requestFrom((uint8_t)0x15,(uint8_t)6)!=(size_t)6)return;
+ uint8_t gesture=Wire.read();Wire.read();
+ uint8_t xh=Wire.read(),xl=Wire.read(),yh=Wire.read(),yl=Wire.read();
+ int x=((xh&0x0F)<<8)|xl,y=((yh&0x0F)<<8)|yl;
+ bool touching=(xh>>6)==0 && x<240 && y<240;
+ if(gesture==4 && screenPage==0){screenPage=1;drawTouchPage();touchDebounce=millis()+250;touchHeld=true;return;}
+ if(gesture==3 && screenPage==1){screenPage=0;drawDashboard();touchDebounce=millis()+250;touchHeld=true;return;}
+ if(touching&&!touchHeld){touchStartX=x;touchStartY=y;touchMoved=false;touchHeld=true;}
+ if(touching&&touchHeld){
+   if(screenPage==0&&x-touchStartX>65){screenPage=1;drawTouchPage();touchDebounce=millis()+250;return;}
+   if(screenPage==1&&touchStartX-x>65){screenPage=0;drawDashboard();touchDebounce=millis()+250;return;}
+   if(abs(x-touchStartX)>22||abs(y-touchStartY)>22)touchMoved=true;
+ }
+ if(!touching&&touchHeld){
+   if(screenPage==1&&!touchMoved&&touchStartX>=43&&touchStartX<=197&&touchStartY>=97&&touchStartY<=164){
+     fetchAttempted=true;lastFetch=millis();
+     lcd->fillRoundRect(43,97,154,67,18,rgb(31,104,92));
+     smoothCenter("HAMTAR...",137,&FreeSansBold9pt7b,WHITE565);
+     fetchTop3();drawTouchPage();
+   }
+   touchHeld=false;touchDebounce=millis();
+ }
+}
 void drawBootScreen() {
   // Identical LCD initialization and PWM backlight method to Capsule Radar 1.28.
   pinMode(2,OUTPUT);
@@ -147,7 +205,7 @@ void fetchTop3(){
  time_t now=time(nullptr);struct tm t;
  if(now>1700000000&&localtime_r(&now,&t)){char buf[20];strftime(buf,sizeof(buf),"Uppd %H:%M",&t);updatedLabel=buf;}
  else updatedLabel="Uppdaterad";
- staleData=d["stale"] | false;apiError=staleData?"Cache från server":"OK";hasLiveData=true;drawDashboard();
+ staleData=d["stale"] | false;apiError=staleData?"Cache från server":"OK";hasLiveData=true;renderScreen();
 }
 
 
@@ -246,7 +304,7 @@ load();setInterval(load,15000);
     d["wifi_connected"] = WiFi.status() == WL_CONNECTED;
     d["setup_ap"] = apMode;
     d["ip"] = apMode ? WiFi.softAPIP().toString() : WiFi.localIP().toString();
-    d["firmware"] = "0.4.0-admin";
+    d["firmware"] = "0.5.0-touch";
     d["wifi_ssid"] = WiFi.status()==WL_CONNECTED?WiFi.SSID():"";
     d["wifi_rssi"] = WiFi.status()==WL_CONNECTED?WiFi.RSSI():-100;
     d["wifi_ip"] = WiFi.status()==WL_CONNECTED?WiFi.localIP().toString():"";
@@ -321,6 +379,7 @@ load();setInterval(load,15000);
 void setup() {
   Serial.begin(115200);
   drawBootScreen();
+  setupTouch();
   prefs.begin("tfmtop",false);
   adminSalt=prefs.getString("adminSalt","");adminHash=prefs.getString("adminHash","");
   ssid=prefs.getString("ssid","");
@@ -347,6 +406,7 @@ void setup() {
 
 void loop() {
   server.handleClient();
+  pollTouch();
   if(WiFi.status()==WL_CONNECTED&&(!fetchAttempted||millis()-lastFetch>=refreshSeconds*1000UL)){
     fetchAttempted=true;lastFetch=millis();fetchTop3();
   }
