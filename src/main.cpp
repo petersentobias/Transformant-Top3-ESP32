@@ -47,7 +47,7 @@ void drawDashboard(){
  // Restrained accent arcs rather than full-screen bright blue rings.
  lcd->drawCircle(120,120,115,rgb(9,49,62));
  lcd->drawCircle(120,120,113,rgb(4,32,42));
- lcd->drawArc(120,120,111,110,130,220,rgb(5,73,68));
+ lcd->drawCircle(120,120,109,rgb(3,31,37));
  smoothCenter("TRANSFORMANT",39,&FreeSansBold9pt7b,WHITE565);
  smoothCenter("OKTOBER 2026",69,&FreeSansBold9pt7b,WHITE565);
  lcd->setFont(nullptr);
