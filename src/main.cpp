@@ -17,11 +17,11 @@ void drawBootScreen() {
     Serial.println("[lcd] initialization failed");
     return;
   }
-  lcd->fillScreen(RED); delay(500);
-  lcd->fillScreen(GREEN); delay(500);
-  lcd->fillScreen(BLUE); delay(500);
-  lcd->fillScreen(BLACK);
-  lcd->setTextColor(WHITE);
+  lcd->fillScreen(0xF800); delay(500);
+  lcd->fillScreen(0x07E0); delay(500);
+  lcd->fillScreen(0x001F); delay(500);
+  lcd->fillScreen(0x0000);
+  lcd->setTextColor(0xFFFF);
   lcd->setTextSize(2);
   lcd->setCursor(40, 85);
   lcd->print("TFM TOP 3");
