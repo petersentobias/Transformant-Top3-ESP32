@@ -9,28 +9,69 @@
 static Arduino_DataBus *lcdBus = new Arduino_ESP32SPI(8, 9, 10, 11, 12);
 static Arduino_GFX *lcd = new Arduino_GC9A01(lcdBus, 14, 0, true);
 
+// RGB565 Transformant-inspired palette. Test figures are illustrative only.
+static constexpr uint16_t BG=0x0000, NAVY=0x0864, CYAN=0x04DF;
+static constexpr uint16_t WHITE565=0xFFFF, MUTED=0xA534;
+static constexpr uint16_t GOLD=0xFEA0, SILVER=0xC638, BRONZE=0xB365;
+static const char* demoNames[3]={"ANNA","ERIK","MARIA"};
+static const char* demoAmounts[3]={"184 500","171 200","158 900"};
+
+void drawDashboard() {
+  lcd->fillScreen(BG);
+  // Layered rings and blue highlights are clipped by the physical round panel.
+  lcd->drawCircle(120,120,118,NAVY);
+  lcd->drawCircle(120,120,114,0x00D5);
+  lcd->drawCircle(120,120,110,NAVY);
+  lcd->fillRoundRect(33,16,174,38,12,NAVY);
+  lcd->drawRoundRect(33,16,174,38,12,CYAN);
+  lcd->setTextSize(2);
+  lcd->setTextColor(WHITE565,NAVY);
+  lcd->setCursor(60,26);
+  lcd->print("TRANSFORMANT");
+  lcd->setTextSize(1);
+  lcd->setTextColor(CYAN,BG);
+  lcd->setCursor(92,64);
+  lcd->print("TOP 3");
+  lcd->drawFastHLine(44,79,152,CYAN);
+  const uint16_t medal[3]={GOLD,SILVER,BRONZE};
+  for(int i=0;i<3;i++){
+    int y=90+i*40;
+    lcd->fillRoundRect(26,y,188,35,9,0x10A3);
+    lcd->drawRoundRect(26,y,188,35,9,NAVY);
+    lcd->fillCircle(44,y+17,11,medal[i]);
+    lcd->setTextSize(1);
+    lcd->setTextColor(BG,medal[i]);
+    lcd->setCursor(41,y+14);
+    lcd->print(i+1);
+    lcd->setTextColor(WHITE565,0x10A3);
+    lcd->setCursor(62,y+6);
+    lcd->print(demoNames[i]);
+    lcd->setTextColor(CYAN,0x10A3);
+    lcd->setCursor(62,y+20);
+    lcd->print(demoAmounts[i]);
+    lcd->setTextColor(MUTED,0x10A3);
+    lcd->setCursor(164,y+20);
+    lcd->print("SEK");
+  }
+  lcd->setTextColor(MUTED,BG);
+  lcd->setCursor(75,219);
+  lcd->print("DEMODATA");
+  Serial.println("[lcd] Transformant Top 3 dashboard rendered");
+}
+
 void drawBootScreen() {
-  // Same PWM backlight initialization as capsule-radar-128 LCD-1.28 port.
-  pinMode(2, OUTPUT);
-  ledcAttach(2, 5000, 8);
-  ledcWrite(2, 255);
+  // Identical LCD initialization and PWM backlight method to Capsule Radar 1.28.
+  pinMode(2,OUTPUT);
+  ledcAttach(2,5000,8);
+  ledcWrite(2,255);
   Serial.println("[lcd] Arduino_GFX GC9A01 begin");
-  if (!lcd->begin(40000000)) {
+  if(!lcd->begin(40000000)){
     Serial.println("[lcd] initialization failed");
     return;
   }
-  lcd->fillScreen(0xF800); delay(500);
-  lcd->fillScreen(0x07E0); delay(500);
-  lcd->fillScreen(0x001F); delay(500);
-  lcd->fillScreen(0x0000);
-  lcd->setTextColor(0xFFFF);
-  lcd->setTextSize(2);
-  lcd->setCursor(40, 85);
-  lcd->print("TFM TOP 3");
-  lcd->setTextSize(1);
-  lcd->setCursor(53, 135);
-  lcd->print("LCD TEST OK");
-  Serial.println("[lcd] test drawn");
+  lcd->fillScreen(0x001F);
+  delay(250);
+  drawDashboard();
 }
 
 WebServer server(80);
