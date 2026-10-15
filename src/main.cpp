@@ -28,36 +28,42 @@ static void wifiBars(int x,int y){
  for(int i=0;i<4;i++)lcd->fillRoundRect(x+i*7,y-(i+1)*3,5,(i+1)*3,1,i<n?MINT:rgb(42,76,82));
 }
 void drawDashboard(){
- // Radial-style navy bands give depth without allocating a framebuffer.
- lcd->fillScreen(BG);
- for(int r=112;r>=32;r-=4){
-   int k=(112-r)/4;
-   lcd->drawCircle(120,118,r,rgb(2+k/4,19+k/2,27+k/2));
+ // Near-black navy backdrop with restrained turquoise glow.
+ lcd->fillScreen(rgb(1,8,13));
+ for(int r=109;r>=36;r-=3){
+   int step=(109-r)/3;
+   lcd->drawCircle(120,120,r,rgb(2+step/7,19+step/3,25+step/3));
  }
- lcd->drawCircle(120,120,116,rgb(12,76,103));
- lcd->drawCircle(120,120,114,rgb(5,36,52));
- centered("TRANSFORMANT",25,2,WHITE565,BG);
- centered("OKTOBER 2026",59,2,WHITE565,BG);
- centered("1-15 okt",80,1,rgb(164,195,205),BG);
+ lcd->drawCircle(120,120,116,rgb(12,65,83));
+ lcd->drawCircle(120,120,114,rgb(3,32,43));
+ // A smaller brand header and more generous breathing room.
+ centered("TRANSFORMANT",26,2,WHITE565,rgb(1,8,13));
+ centered("OKTOBER 2026",60,2,WHITE565,rgb(1,8,13));
+ centered("1-15 okt",81,1,rgb(158,184,194),rgb(1,8,13));
  const uint16_t metals[3]={GOLD,SILVER,BRONZE};
+ const uint16_t darks[3]={rgb(125,77,8),rgb(89,104,128),rgb(120,63,32)};
  for(int i=0;i<3;i++){
-   const int y=98+i*34, x=25, w=190;
-   lcd->fillRoundRect(x,y+2,w,29,7,rgb(1,9,14));
-   lcd->fillRoundRect(x,y,w,28,7,rgb(4,24,32));
-   lcd->drawFastHLine(x+23,y+29,w-28,metals[i]);
-   lcd->fillRect(x+11,y-3,13,8,metals[i]);
-   lcd->fillCircle(x+18,y+15,11,metals[i]);
-   lcd->drawCircle(x+18,y+15,9,rgb(255,235,183));
+   const int y=96+i*32, x=25,w=190;
+   lcd->fillRoundRect(x+1,y+3,w-2,27,8,rgb(0,5,9));
+   lcd->fillRoundRect(x,y,w,27,8,rgb(3,18,25));
+   lcd->drawFastHLine(x+24,y+28,w-30,darks[i]);
+   lcd->drawFastHLine(x+32,y+28,w-55,metals[i]);
+   // Embossed medal with ribbon, shadow, concentric rim and highlight.
+   lcd->fillTriangle(x+12,y+2,x+24,y+2,x+18,y+16,darks[i]);
+   lcd->fillCircle(x+18,y+16,12,rgb(1,9,13));
+   lcd->fillCircle(x+18,y+15,11,darks[i]);
+   lcd->fillCircle(x+18,y+14,10,metals[i]);
+   lcd->drawCircle(x+18,y+14,8,rgb(255,226,166));
+   lcd->drawFastHLine(x+13,y+7,9,rgb(255,244,205));
    label(i==0?"1":i==1?"2":"3",x+15,y+11,1,rgb(15,26,32),metals[i]);
-   // 5x7 bitmap font: two text lines avoid overlapping names and SEK values.
-   label(demoNames[i],x+34,y+5,1,WHITE565,rgb(4,24,32));
-   label(demoAmounts[i],x+34,y+17,1,MINT,rgb(4,24,32));
+   label(demoNames[i],x+34,y+3,1,WHITE565,rgb(3,18,25));
+   label(demoAmounts[i],x+34,y+15,1,MINT,rgb(3,18,25));
  }
- lcd->drawFastHLine(63,201,114,rgb(46,81,94));
- label("Uppd 14:27",65,207,1,rgb(172,202,211),BG);
- wifiBars(139,214);
- label("WiFi",170,207,1,MINT,BG);
- Serial.println("[lcd] reference-inspired dashboard rendered");
+ lcd->drawFastHLine(65,198,110,rgb(38,71,82));
+ label("Uppd 14:27",65,205,1,rgb(162,188,197),rgb(1,8,13));
+ wifiBars(139,213);
+ label("WiFi",170,205,1,MINT,rgb(1,8,13));
+ Serial.println("[lcd] dark navy leaderboard rendered");
 }
 
 void drawBootScreen() {
