@@ -41,10 +41,13 @@ function draw(){
    ctx.textBaseline='middle';ctx.textAlign='left';let sz=11*sc;ctx.font='700 '+sz+'px system-ui';while(ctx.measureText(name).width>92&&sz>7){sz-=.5;ctx.font='700 '+sz+'px system-ui'}ctx.fillStyle='#f5faff';ctx.fillText(name,x+32,y+16);
    ctx.textAlign='right';sz=11*sc;ctx.font='800 '+sz+'px system-ui';while(ctx.measureText(amount).width>77&&sz>7){sz-=.5;ctx.font='800 '+sz+'px system-ui'}ctx.fillStyle='#6cf1c7';ctx.fillText(amount,x+w-7,y+16);
  }
- ctx.strokeStyle='#44657999';ctx.beginPath();ctx.moveTo(56,205);ctx.lineTo(184,205);ctx.stroke();
- textFit('Uppd. 15 okt 14:27',94,216,106,7.5,'#a9bacd','500');
- ctx.fillStyle='#5cf0bb';ctx.beginPath();ctx.arc(166,216,3,0,Math.PI*2);ctx.fill();
- textFit('Online',185,216,35,7.5,'#6cf1c7','600');
+ // Footer stays within circular safe bounds (at y=207 available half-width is ~72px).
+ ctx.strokeStyle='#44657999';ctx.beginPath();ctx.moveTo(62,198);ctx.lineTo(178,198);ctx.stroke();
+ ctx.textBaseline='middle';ctx.textAlign='left';ctx.font='500 7px system-ui,sans-serif';ctx.fillStyle='#b9cbd9';ctx.fillText('Uppd 14:27',63,208);
+ // Wi-Fi RSSI bars: illustrative 3/4 strength in the simulator.
+ const levels=[3,5,7,9];for(let j=0;j<4;j++){ctx.fillStyle=j<3?'#64efc4':'#365663';ctx.beginPath();ctx.roundRect(132+j*6,213-levels[j],4,levels[j],1);ctx.fill();}
+ ctx.fillStyle='#64efc4';ctx.beginPath();ctx.arc(166,208,2,0,Math.PI*2);ctx.fill();
+ ctx.textAlign='left';ctx.font='600 7px system-ui,sans-serif';ctx.fillText('Wi-Fi',171,208);
  ctx.restore();
 }
 document.querySelectorAll('input').forEach(e=>e.addEventListener('input',()=>{$('scaleValue').textContent=$('scale').value+'%';$('spacingValue').textContent=$('spacing').value+' px';draw()}));$('png').onclick=()=>{const a=document.createElement('a');a.download='transformant-top3-preview.png';a.href=canvas.toDataURL('image/png');a.click()};$('export').onclick=()=>navigator.clipboard.writeText(JSON.stringify(state(),null,2)).then(()=>{$('export').textContent='Kopierat!';setTimeout(()=>$('export').textContent='Kopiera designinställningar (JSON)',1600)});draw();
