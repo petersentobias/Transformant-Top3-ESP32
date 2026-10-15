@@ -225,7 +225,7 @@ static String hashAdmin(const String& salt,const String& pass){
 }
 static bool adminConfigured(){return adminSalt.length()==32&&adminHash.length()==64;}
 static bool authorized(){
-  if(!adminConfigured()){server.sendHeader("Cache-Control","no-store");server.send(403,"application/json","{\\"error\\":\\"Create admin password first\\",\\"setup_required\\":true}");return false;}
+  if(!adminConfigured()){server.sendHeader("Cache-Control","no-store");server.send(403,"application/json","{\"error\":\"Create admin password first\",\"setup_required\":true}");return false;}
   if(server.hasHeader("Authorization")){
     String raw=server.header("Authorization");
     if(raw.startsWith("Basic ")){
@@ -244,17 +244,17 @@ static bool authorized(){
 }
 void setupRoutes() {
   server.on("/api/admin/setup",HTTP_POST,[](){
-    if(adminConfigured()){sendJson(403,"{\\"error\\":\\"Already configured\\"}");return;}
-    JsonDocument d;if(deserializeJson(d,server.arg("plain"))){sendJson(400,"{\\"error\\":\\"Invalid JSON\\"}");return;}
+    if(adminConfigured()){sendJson(403,"{\"error\":\"Already configured\"}");return;}
+    JsonDocument d;if(deserializeJson(d,server.arg("plain"))){sendJson(400,"{\"error\":\"Invalid JSON\"}");return;}
     String pass=d["password"] | "";
-    if(pass.length()<12||pass.length()>128){sendJson(400,"{\\"error\\":\\"Password must be 12-128 characters\\"}");return;}
+    if(pass.length()<12||pass.length()>128){sendJson(400,"{\"error\":\"Password must be 12-128 characters\"}");return;}
     char saltBuf[33];for(int i=0;i<16;i++)sprintf(saltBuf+i*2,"%02x",(unsigned)(esp_random()&255));saltBuf[32]=0;
     adminSalt=String(saltBuf);adminHash=hashAdmin(adminSalt,pass);
     prefs.putString("adminSalt",adminSalt);prefs.putString("adminHash",adminHash);
-    sendJson(200,"{\\"status\\":\\"created\\"}");
+    sendJson(200,"{\"status\":\"created\"}");
   });
   server.on("/api/admin/state",HTTP_GET,[](){
-    sendJson(200,adminConfigured()?"{\\"configured\\":true}":"{\\"configured\\":false}");
+    sendJson(200,adminConfigured()?"{\"configured\":true}":"{\"configured\":false}");
   });
   server.on("/", HTTP_GET, []() {
     if(!adminConfigured()){
