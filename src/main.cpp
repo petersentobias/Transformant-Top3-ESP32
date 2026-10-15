@@ -1,5 +1,8 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <HTTPClient.h>
+#include <time.h>
 #include <WebServer.h>
 #include <ESPmDNS.h>
 #include <Preferences.h>
@@ -15,8 +18,16 @@ static Arduino_GFX *lcd = new Arduino_GC9A01(lcdBus, 14, 0, true);
 // Firmware uses bitmap fonts, so visual typography will differ from HTML Canvas.
 static constexpr uint16_t BG=0x0022, WHITE565=0xF7FF, MINT=0x6F77;
 static constexpr uint16_t GOLD=0xFE80, SILVER=0xCE79, BRONZE=0xD3C9;
-static const char* demoNames[3]={"Anna Andersson","Erik Svensson","Maria Lind"};
-static const char* demoAmounts[3]={"184 500 kr","171 200 kr","158 900 kr"};
+static String names[3]={"Väntar på data","-","-"};
+static String amounts[3]={"-","-","-"};
+static String periodLabel="Väntar på BC",updatedLabel="Ej hämtat";
+static String apiKey,caPem,apiError="Ej hämtat";
+static bool hasLiveData=false,staleData=false;
+static unsigned long lastFetch=0;
+static bool fetchAttempted=false;
+static const char* apiUrl="https://transformant-top3-api.petersen-tobias.workers.dev/api/top3";
+static String sek(int64_t v){String s=String(v),out;int n=0;for(int i=s.length()-1;i>=0;i--){if(n&&n%3==0)out=" "+out;out=String(s[i])+out;n++;}return out+" kr";}
+
 static uint16_t rgb(uint8_t r,uint8_t g,uint8_t b){return lcd->color565(r,g,b);}
 static void label(const char* t,int x,int y,int scale,uint16_t fg,uint16_t bg){
  lcd->setTextSize(scale);lcd->setTextColor(fg,bg);lcd->setCursor(x,y);lcd->print(t);
@@ -51,7 +62,7 @@ void drawDashboard(){
  smoothCenter("TRANSFORMANT",39,&FreeSansBold9pt7b,WHITE565);
  smoothCenter("OKTOBER 2026",69,&FreeSansBold9pt7b,WHITE565);
  lcd->setFont(nullptr);
- centered("1-15 okt",81,1,rgb(160,187,197),navy);
+ centered(periodLabel.c_str(),81,1,rgb(160,187,197),navy);
  const uint16_t metals[3]={GOLD,SILVER,BRONZE};
  const uint16_t shades[3]={rgb(112,68,9),rgb(85,103,120),rgb(120,67,34)};
  for(int i=0;i<3;i++){
@@ -66,15 +77,15 @@ void drawDashboard(){
    lcd->drawCircle(x+18,y+14,8,rgb(255,225,165));
    lcd->setFont(nullptr);
    label(i==0?"1":i==1?"2":"3",x+15,y+10,1,rgb(15,26,32),metals[i]);
-   smoothText(demoNames[i],x+34,y+12,&FreeSans9pt7b,WHITE565);
+   smoothText(names[i].substring(0,18).c_str(),x+34,y+12,&FreeSans9pt7b,WHITE565);
    lcd->setFont(nullptr);
-   label(demoAmounts[i],x+35,y+18,1,MINT,panel);
+   label(amounts[i].c_str(),x+35,y+18,1,MINT,panel);
  }
  lcd->setFont(nullptr);
  lcd->drawFastHLine(65,198,110,rgb(38,71,82));
- label("Uppd 14:27",65,205,1,rgb(162,188,197),navy);
+ label(updatedLabel.c_str(),52,205,1,rgb(162,188,197),navy);
  wifiBars(139,213);
- label("WiFi",170,205,1,MINT,navy);
+ label(staleData?"Gammal":"WiFi",170,205,1,staleData?GOLD:MINT,navy);
  Serial.println("[lcd] proportional font dashboard rendered");
 }
 
@@ -99,6 +110,33 @@ String ssid;
 String password;
 bool apMode = false;
 unsigned long lastReconnect = 0;
+void fetchTop3(){
+ if(WiFi.status()!=WL_CONNECTED){apiError="Wi-Fi saknas";staleData=hasLiveData;return;}
+ if(apiKey.length()<16){apiError="API-nyckel saknas";staleData=hasLiveData;return;}
+ if(caPem.indexOf("-----BEGIN CERTIFICATE-----")<0){apiError="CA-certifikat saknas";staleData=hasLiveData;return;}
+ WiFiClientSecure client;client.setCACert(caPem.c_str());client.setTimeout(12000);
+ HTTPClient http;
+ if(!http.begin(client,apiUrl)){apiError="HTTPS start misslyckades";staleData=hasLiveData;return;}
+ http.setTimeout(12000);http.addHeader("X-Device-Key",apiKey);
+ int status=http.GET();
+ if(status!=200){apiError="HTTP "+String(status);http.end();staleData=hasLiveData;return;}
+ JsonDocument d;DeserializationError e=deserializeJson(d,http.getStream());http.end();
+ if(e||!d["top3"].is<JsonArray>()){apiError="Ogiltigt JSON";staleData=hasLiveData;return;}
+ JsonArray a=d["top3"].as<JsonArray>();
+ for(int i=0;i<3;i++){
+   if(i<(int)a.size()){
+     names[i]=a[i]["name"].as<String>();
+     amounts[i]=sek(a[i]["amount_sek"].as<int64_t>());
+   }else{names[i]="-";amounts[i]="-";}
+ }
+ String start=d["period_start"] | "";String end=d["period_end"] | "";
+ if(start.length()==10&&end.length()==10)periodLabel=start.substring(8,10)+"-"+end.substring(8,10)+"/"+end.substring(5,7);
+ time_t now=time(nullptr);struct tm t;
+ if(now>1700000000&&localtime_r(&now,&t)){char buf[20];strftime(buf,sizeof(buf),"Uppd %H:%M",&t);updatedLabel=buf;}
+ else updatedLabel="Uppdaterad";
+ staleData=d["stale"] | false;apiError=staleData?"Cache från server":"OK";hasLiveData=true;drawDashboard();
+}
+
 
 void sendJson(int status, const String& body) {
   server.sendHeader("Cache-Control", "no-store");
@@ -107,7 +145,7 @@ void sendJson(int status, const String& body) {
 
 void setupRoutes() {
   server.on("/", HTTP_GET, []() {
-    server.send(200, "text/html; charset=utf-8", R"HTML(<!doctype html><html lang="sv"><meta name="viewport" content="width=device-width,initial-scale=1"><meta charset="utf-8"><title>TFM Top</title><style>body{font:16px system-ui;background:#10251b;color:#eef;margin:0;padding:24px;max-width:600px}section{background:#1c392b;border-radius:14px;padding:18px;margin:16px 0}button,input{padding:12px;border-radius:8px;border:0;margin:5px}button{background:#61e49b;color:#10251b}input{width:85%}pre{white-space:pre-wrap}</style><h1>Transformant Top 3</h1><p>ESP32 – första utvecklingsversionen</p><section><h2>Wi-Fi</h2><button onclick="scan()">Sök nätverk</button><div id="networks"></div><input id="ssid" placeholder="Nätverksnamn"><input id="password" type="password" placeholder="Wi-Fi-lösenord"><button onclick="save()">Spara och anslut</button><p id="result"></p></section><section><h2>Status</h2><pre id="status"></pre></section><script>async function scan(){let r=await fetch('/api/wifi/scan');let n=await r.json();document.querySelector('#networks').replaceChildren(...n.map(x=>{let b=document.createElement('button');b.textContent=x.ssid+' ('+x.rssi+' dBm)';b.onclick=()=>document.querySelector('#ssid').value=x.ssid;return b}))}async function save(){let r=await fetch('/api/wifi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid:document.querySelector('#ssid').value,password:document.querySelector('#password').value})});document.querySelector('#result').textContent=await r.text()}async function status(){try{document.querySelector('#status').textContent=JSON.stringify(await (await fetch('/api/status')).json(),null,2)}catch(e){}}status();</script></html>)HTML");
+    server.send(200, "text/html; charset=utf-8", R"HTML(<!doctype html><html lang="sv"><meta name="viewport" content="width=device-width,initial-scale=1"><meta charset="utf-8"><title>TFM Top</title><style>body{font:16px system-ui;background:#10251b;color:#eef;margin:0;padding:24px;max-width:600px}section{background:#1c392b;border-radius:14px;padding:18px;margin:16px 0}button,input{padding:12px;border-radius:8px;border:0;margin:5px}button{background:#61e49b;color:#10251b}input{width:85%}pre{white-space:pre-wrap}</style><h1>Transformant Top 3</h1><p>ESP32 – första utvecklingsversionen</p><section><h2>Wi-Fi</h2><button onclick="scan()">Sök nätverk</button><div id="networks"></div><input id="ssid" placeholder="Nätverksnamn"><input id="password" type="password" placeholder="Wi-Fi-lösenord"><button onclick="save()">Spara och anslut</button><p id="result"></p></section><section><h2>Business Central API</h2><p>Nyckel och CA-certifikat lagras lokalt på enheten.</p><input id="key" type="password" autocomplete="off" placeholder="Ny DEVICE_API_KEY"><textarea id="ca" rows="5" style="width:95%" placeholder="PEM CA-certifikat (-----BEGIN CERTIFICATE-----)"></textarea><button onclick="saveApi()">Spara API-inställningar</button><p id="apiresult"></p></section><section><h2>Status</h2><pre id="status"></pre></section><script>async function scan(){let r=await fetch('/api/wifi/scan');let n=await r.json();document.querySelector('#networks').replaceChildren(...n.map(x=>{let b=document.createElement('button');b.textContent=x.ssid+' ('+x.rssi+' dBm)';b.onclick=()=>document.querySelector('#ssid').value=x.ssid;return b}))}async function save(){let r=await fetch('/api/wifi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid:document.querySelector('#ssid').value,password:document.querySelector('#password').value})});document.querySelector('#result').textContent=await r.text()}async function saveApi(){let key=document.querySelector('#key').value,ca=document.querySelector('#ca').value;let r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key,ca})});document.querySelector('#apiresult').textContent=await r.text();document.querySelector('#key').value=''}async function status(){try{document.querySelector('#status').textContent=JSON.stringify(await (await fetch('/api/status')).json(),null,2)}catch(e){}}status();</script></html>)HTML");
   });
   server.on("/api/status", HTTP_GET, []() {
     JsonDocument d;
@@ -115,7 +153,12 @@ void setupRoutes() {
     d["wifi_connected"] = WiFi.status() == WL_CONNECTED;
     d["setup_ap"] = apMode;
     d["ip"] = apMode ? WiFi.softAPIP().toString() : WiFi.localIP().toString();
-    d["firmware"] = "0.1.0-dev";
+    d["firmware"] = "0.2.0-api";
+    d["api_configured"] = apiKey.length()>=16;
+    d["ca_configured"] = caPem.length()>100;
+    d["api_status"] = apiError;
+    d["has_live_data"] = hasLiveData;
+    d["stale"] = staleData;
     String out; serializeJson(d,out); sendJson(200,out);
   });
   server.on("/api/wifi/scan", HTTP_GET, []() {
@@ -143,6 +186,13 @@ void setupRoutes() {
     delay(500);
     ESP.restart();
   });
+  server.on("/api/config",HTTP_POST,[](){
+    JsonDocument d;if(deserializeJson(d,server.arg("plain"))){sendJson(400,"{\"error\":\"Invalid JSON\"}");return;}
+    String key=d["key"] | "";String ca=d["ca"] | "";
+    if(key.length()<16||key.length()>256||ca.length()<500||ca.indexOf("-----BEGIN CERTIFICATE-----")<0||ca.length()>8192){sendJson(400,"{\"error\":\"Invalid key or CA PEM\"}");return;}
+    prefs.putString("apiKey",key);prefs.putString("caPem",ca);apiKey=key;caPem=ca;
+    fetchAttempted=false;sendJson(200,"{\"status\":\"saved\"}");
+  });
   server.begin();
 }
 
@@ -152,6 +202,8 @@ void setup() {
   prefs.begin("tfmtop",false);
   ssid=prefs.getString("ssid","");
   password=prefs.getString("password","");
+  apiKey=prefs.getString("apiKey","");caPem=prefs.getString("caPem","");
+  configTzTime("CET-1CEST,M3.5.0/2,M10.5.0/3","pool.ntp.org","time.google.com");
   WiFi.mode(WIFI_AP_STA);
   if(ssid.length()) {
     WiFi.begin(ssid.c_str(),password.c_str());
@@ -167,10 +219,14 @@ void setup() {
   }
   if(MDNS.begin("tfmtop")) MDNS.addService("http","tcp",80);
   setupRoutes();
+  drawDashboard();
 }
 
 void loop() {
   server.handleClient();
+  if(WiFi.status()==WL_CONNECTED&&(!fetchAttempted||millis()-lastFetch>=300000UL)){
+    fetchAttempted=true;lastFetch=millis();fetchTop3();
+  }
   if(!apMode && WiFi.status()!=WL_CONNECTED && millis()-lastReconnect>15000) {
     lastReconnect=millis();
     WiFi.reconnect();
