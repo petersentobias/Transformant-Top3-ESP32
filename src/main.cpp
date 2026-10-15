@@ -11,8 +11,16 @@ TFT_eSPI tft = TFT_eSPI();
 void drawBootScreen() {
   pinMode(2, OUTPUT);
   digitalWrite(2, HIGH);
+  Serial.println("LCD: initializing GC9A01A");
   tft.init();
+  Serial.println("LCD: initialized");
   tft.setRotation(0);
+  tft.fillScreen(TFT_RED);
+  delay(600);
+  tft.fillScreen(TFT_GREEN);
+  delay(600);
+  tft.fillScreen(TFT_BLUE);
+  delay(600);
   tft.fillScreen(TFT_BLACK);
   tft.drawCircle(120, 120, 116, TFT_DARKGREY);
   tft.setTextDatum(MC_DATUM);
