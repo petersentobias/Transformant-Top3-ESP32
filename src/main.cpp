@@ -175,43 +175,57 @@ void setupTouch(){
 }
 void pollTouch(){
  if(!touchReady)return;
- // Ignore gesture register: it can repeat stale swipe events.
- // Require a real single-finger movement and only navigate once per contact.
- static bool inContact=false;
- static bool pageChanged=false;
- static uint8_t samples=0;
- static unsigned long contactStart=0,lastSeen=0,lastNavigation=0;
- if(millis()-touchDebounce<35)return;
- touchDebounce=millis();
+ // Only a fresh DOWN -> movement -> UP sequence can change pages.
+ // Stale coordinates and repeated gesture IDs must never trigger navigation.
+ enum TouchState { WAIT_FOR_RELEASE, ARMED, TRACKING };
+ static TouchState state=WAIT_FOR_RELEASE;
+ static int startX=0,startY=0,lastX=0,lastY=0;
+ static uint8_t points=0;
+ static unsigned long downAt=0,lastChange=0,lastPoll=0;
+ if(millis()-lastPoll<35)return;
+ lastPoll=millis();
  Wire.beginTransmission(0x15);Wire.write(0x01);
  if(Wire.endTransmission(false)!=0)return;
  if(Wire.requestFrom((uint8_t)0x15,(uint8_t)6)!=(size_t)6)return;
- Wire.read(); // gesture (unused)
- uint8_t fingerCount=Wire.read();
+ Wire.read(); // Ignore gesture register: it may retain old values.
+ uint8_t fingers=Wire.read();
  uint8_t xh=Wire.read(),xl=Wire.read(),yh=Wire.read(),yl=Wire.read();
  int x=((xh&0x0F)<<8)|xl,y=((yh&0x0F)<<8)|yl;
- uint8_t event=xh>>6;
- bool valid=fingerCount==1 && (event==0 || event==2) && x<240 && y<240;
- if(!valid){
-   if(inContact && millis()-lastSeen>130){
-     inContact=false;pageChanged=false;samples=0;
+ uint8_t event=xh>>6; // CST816S: 0=DOWN, 1=UP, 2=CONTACT
+ bool coordsValid=x<240&&y<240;
+ bool down=fingers==1&&event==0&&coordsValid;
+ bool move=fingers==1&&event==2&&coordsValid;
+ bool released=event==1 || fingers==0;
+ if(state==WAIT_FOR_RELEASE){
+   // Do not re-arm on persistent finger-down reports after a page change.
+   if(released && millis()-lastChange>=1200)state=ARMED;
+   return;
+ }
+ if(state==ARMED){
+   if(down && millis()-lastChange>=1200){
+     startX=lastX=x;startY=lastY=y;points=1;downAt=millis();
+     state=TRACKING;
    }
    return;
  }
- lastSeen=millis();
- if(!inContact){
-   inContact=true;pageChanged=false;samples=1;
-   contactStart=millis();touchStartX=x;touchStartY=y;
+ // TRACKING: wait for a release before committing the page change.
+ if(move && millis()-downAt<1400){
+   lastX=x;lastY=y;if(points<255)points++;
    return;
  }
- if(samples<255)samples++;
- if(pageChanged || samples<3 || millis()-contactStart<80 || millis()-contactStart>1400)return;
- int dx=x-touchStartX,dy=y-touchStartY;
- if(abs(dx)>=75 && abs(dy)<=65 && millis()-lastNavigation>=650){
-   pageChanged=true;lastNavigation=millis();
-   screenPage=(screenPage+(dx>0?1:2))%3;
-   renderScreen();
+ if(released){
+   int dx=lastX-startX,dy=lastY-startY;
+   bool validSwipe=points>=3 && millis()-downAt>=80 &&
+       millis()-downAt<=1400 && abs(dx)>=75 && abs(dy)<=65;
+   state=WAIT_FOR_RELEASE;
+   if(validSwipe){
+     lastChange=millis();
+     screenPage=(screenPage+(dx>0?1:2))%3;
+     renderScreen();
+   }
+   return;
  }
+ if(millis()-downAt>1400)state=WAIT_FOR_RELEASE;
 }
 void drawBootScreen() {
   // Identical LCD initialization and PWM backlight method to Capsule Radar 1.28.
