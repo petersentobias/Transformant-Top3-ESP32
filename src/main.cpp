@@ -10,8 +10,10 @@ static Arduino_DataBus *lcdBus = new Arduino_ESP32SPI(8, 9, 10, 11, 12);
 static Arduino_GFX *lcd = new Arduino_GC9A01(lcdBus, 14, 0, true);
 
 void drawBootScreen() {
+  // Same PWM backlight initialization as capsule-radar-128 LCD-1.28 port.
   pinMode(2, OUTPUT);
-  digitalWrite(2, HIGH);
+  ledcAttach(2, 5000, 8);
+  ledcWrite(2, 255);
   Serial.println("[lcd] Arduino_GFX GC9A01 begin");
   if (!lcd->begin(40000000)) {
     Serial.println("[lcd] initialization failed");
