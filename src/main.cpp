@@ -170,7 +170,9 @@ void setupTouch(){
  Serial.printf("[touch] CST816S: %s\\n",touchReady?"detected":"not found");
 }
 void pollTouch(){
- if(!touchReady||millis()-touchDebounce<50)return;
+ if(!touchReady)return;
+ // Use elapsed time from a past event; never store a future timestamp.
+ if(millis()-touchDebounce<350)return;
  Wire.beginTransmission(0x15);Wire.write(0x01);
  if(Wire.endTransmission(false)!=0)return;
  if(Wire.requestFrom((uint8_t)0x15,(uint8_t)6)!=(size_t)6)return;
@@ -178,12 +180,21 @@ void pollTouch(){
  uint8_t xh=Wire.read(),xl=Wire.read(),yh=Wire.read(),yl=Wire.read();
  int x=((xh&0x0F)<<8)|xl,y=((yh&0x0F)<<8)|yl;
  bool touching=(xh>>6)==0 && x<240 && y<240;
- if(gesture==4){screenPage=(screenPage+1)%3;renderScreen();touchDebounce=millis()+250;touchHeld=true;return;}
- if(gesture==3){screenPage=(screenPage+2)%3;renderScreen();touchDebounce=millis()+250;touchHeld=true;return;}
- if(touching&&!touchHeld){touchStartX=x;touchStartY=y;touchMoved=false;touchHeld=true;}
- if(touching&&touchHeld){
-   if(x-touchStartX>65){screenPage=(screenPage+1)%3;renderScreen();touchDebounce=millis()+250;return;}
-   if(touchStartX-x>65){screenPage=(screenPage+2)%3;renderScreen();touchDebounce=millis()+250;return;}
+ // Exactly one navigation event per touch sequence.
+ if(!touchMoved && (gesture==4 || gesture==3)){
+   screenPage=(screenPage+(gesture==4?1:2))%3;
+   touchMoved=true;touchHeld=true;touchDebounce=millis();
+   renderScreen();return;
+ }
+ if(touching&&!touchHeld){
+   touchStartX=x;touchStartY=y;touchMoved=false;touchHeld=true;
+ }
+ if(touching&&touchHeld&&!touchMoved){
+   if(abs(x-touchStartX)>65 && abs(y-touchStartY)<90){
+     screenPage=(screenPage+(x>touchStartX?1:2))%3;
+     touchMoved=true;touchDebounce=millis();
+     renderScreen();return;
+   }
    if(abs(x-touchStartX)>22||abs(y-touchStartY)>22)touchMoved=true;
  }
  if(!touching&&touchHeld){
@@ -193,7 +204,7 @@ void pollTouch(){
      smoothCenter("HAMTAR...",137,&FreeSansBold9pt7b,WHITE565);
      fetchTop3();drawTouchPage();
    }
-   touchHeld=false;touchDebounce=millis();
+   touchHeld=false;touchMoved=false;touchDebounce=millis();
  }
 }
 void drawBootScreen() {
