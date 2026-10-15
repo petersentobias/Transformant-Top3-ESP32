@@ -24,7 +24,7 @@ function draw(){
  textFit('1–15 okt · hittills denna månad',120,77,175,9*sc,'#aebed0','500');
  const metals=[['#fff4b0','#ffcf40','#b87808'],['#ffffff','#cbd6eb','#7d8aa8'],['#ffe1b4','#e49a58','#99511e']];
  for(let i=0;i<3;i++){
-   const y=94+i*35, x=24,w=192;
+   const y=94+i*32, x=24,w=192;
    ctx.save();ctx.shadowColor='#0009';ctx.shadowBlur=5;ctx.shadowOffsetY=3;
    const panel=ctx.createLinearGradient(x,y,x+w,y+26);panel.addColorStop(0,'#06131dcc');panel.addColorStop(.6,'#0a1b24ee');panel.addColorStop(1,'#06121add');
    ctx.fillStyle=panel;ctx.beginPath();ctx.roundRect(x,y,w,29,7);ctx.fill();ctx.restore();
