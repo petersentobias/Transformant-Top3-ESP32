@@ -3,6 +3,9 @@
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <time.h>
+#include <mbedtls/sha256.h>
+#include <mbedtls/base64.h>
+#include <esp_system.h>
 #include <WebServer.h>
 #include <ESPmDNS.h>
 #include <Preferences.h>
@@ -153,8 +156,53 @@ void sendJson(int status, const String& body) {
   server.send(status, "application/json; charset=utf-8", body);
 }
 
+static String adminSalt,adminHash;
+static String hashAdmin(const String& salt,const String& pass){
+  String value=salt+":"+pass;
+  unsigned char digest[32];
+  mbedtls_sha256_ret((const unsigned char*)value.c_str(),value.length(),digest,0);
+  char out[65];for(int i=0;i<32;i++)sprintf(out+i*2,"%02x",digest[i]);out[64]=0;
+  return String(out);
+}
+static bool adminConfigured(){return adminSalt.length()==32&&adminHash.length()==64;}
+static bool authorized(){
+  if(!adminConfigured()){server.sendHeader("Cache-Control","no-store");server.send(403,"application/json","{\\"error\\":\\"Create admin password first\\",\\"setup_required\\":true}");return false;}
+  if(server.hasHeader("Authorization")){
+    String raw=server.header("Authorization");
+    if(raw.startsWith("Basic ")){
+      String encoded=raw.substring(6);
+      // Basic auth decoded by WebServer::authenticate only with plaintext credentials;
+      // use mbedtls base64 decoder to compare the salted hash instead.
+      unsigned char decoded[256];size_t outLen=0;
+      if(encoded.length()<340&&mbedtls_base64_decode(decoded,sizeof(decoded)-1,&outLen,(const unsigned char*)encoded.c_str(),encoded.length())==0){
+        decoded[outLen]=0;String pair=(const char*)decoded;
+        if(pair.startsWith("admin:")&&hashAdmin(adminSalt,pair.substring(6))==adminHash)return true;
+      }
+    }
+  }
+  server.requestAuthentication(BASIC_AUTH,"Transformant Top 3","Logga in som admin");
+  return false;
+}
 void setupRoutes() {
+  server.on("/api/admin/setup",HTTP_POST,[](){
+    if(adminConfigured()){sendJson(403,"{\\"error\\":\\"Already configured\\"}");return;}
+    JsonDocument d;if(deserializeJson(d,server.arg("plain"))){sendJson(400,"{\\"error\\":\\"Invalid JSON\\"}");return;}
+    String pass=d["password"] | "";
+    if(pass.length()<12||pass.length()>128){sendJson(400,"{\\"error\\":\\"Password must be 12-128 characters\\"}");return;}
+    char saltBuf[33];for(int i=0;i<16;i++)sprintf(saltBuf+i*2,"%02x",(unsigned)(esp_random()&255));saltBuf[32]=0;
+    adminSalt=String(saltBuf);adminHash=hashAdmin(adminSalt,pass);
+    prefs.putString("adminSalt",adminSalt);prefs.putString("adminHash",adminHash);
+    sendJson(200,"{\\"status\\":\\"created\\"}");
+  });
+  server.on("/api/admin/state",HTTP_GET,[](){
+    sendJson(200,adminConfigured()?"{\\"configured\\":true}":"{\\"configured\\":false}");
+  });
   server.on("/", HTTP_GET, []() {
+    if(!adminConfigured()){
+      server.send(200,"text/html; charset=utf-8",R"SETUP(<!doctype html><html lang="sv"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Skapa administratör</title><style>body{font:16px system-ui;background:#071b1c;color:#e8f7f4;max-width:450px;margin:60px auto;padding:20px}input,button{display:block;width:100%;box-sizing:border-box;padding:14px;margin:12px 0;border-radius:9px;font:inherit}button{background:#75e5b3;border:0}input{background:#143638;border:1px solid #56847b;color:white}</style><h1>Transformant Top 3</h1><h2>Skapa administratörslösenord</h2><p>Minst 12 tecken. Använd ett unikt lösenord. Inloggningen sker över lokalt HTTP och är inte krypterad.</p><input id="p" type="password" autocomplete="new-password" placeholder="Nytt lösenord"><input id="p2" type="password" autocomplete="new-password" placeholder="Upprepa lösenord"><button onclick="go()">Skapa administratör</button><p id="msg"></p><script>async function go(){let p=document.getElementById('p').value;if(p!==document.getElementById('p2').value){document.getElementById('msg').textContent='Lösenorden matchar inte';return}let r=await fetch('/api/admin/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:p})});let d=await r.json();document.getElementById('msg').textContent=r.ok?'Klart! Laddar om…':d.error;if(r.ok)setTimeout(()=>location.reload(),900)}</script></html>)SETUP");
+      return;
+    }
+    if(!authorized())return;
     server.send(200, "text/html; charset=utf-8", R"HTML(<!doctype html><html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Transformant Top 3</title>
 <style>:root{color-scheme:dark;font-family:system-ui,Segoe UI,sans-serif}*{box-sizing:border-box}body{margin:0;background:#071b1c;color:#e8f7f4}main{max-width:1040px;margin:auto;padding:26px 18px 60px}header{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}h1{margin:0;font-size:clamp(26px,4vw,38px)}h2{margin:0 0 16px;font-size:19px}p{color:#a6c3c0}.tag{border:1px solid #37645d;padding:7px 12px;border-radius:30px;color:#9ce9d0}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-top:22px}.card{background:#102e30;border:1px solid #234648;border-radius:18px;padding:22px}.wide{grid-column:1/-1}.muted{color:#9abbb7}.rows{display:grid;gap:12px}.person{display:grid;grid-template-columns:40px 1fr auto;align-items:center;gap:12px;background:#173a3c;padding:14px;border-radius:12px}.medal{display:grid;place-items:center;width:36px;height:36px;border-radius:50%;background:#e5bc66;color:#172629;font-weight:800}.person:nth-child(2) .medal{background:#becdd3}.person:nth-child(3) .medal{background:#c98c67}.person strong{display:block}.person small{color:#abc9c5}.amount{font-weight:750;color:#80e9c5;white-space:nowrap}label{display:block;margin:14px 0 6px;color:#b6d4d0}input,select,textarea{background:#071d20;color:#e8f7f4;border:1px solid #3b6464;border-radius:10px;padding:12px;width:100%;font:inherit}button{background:#75e5b3;color:#072521;border:0;border-radius:10px;padding:12px 17px;font:inherit;font-weight:700;cursor:pointer;margin-top:12px}button.secondary{background:#254d4c;color:#e8f7f4}button:disabled{opacity:.55}.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.stat{padding:13px;background:#173a3c;border-radius:12px}.stat b{display:block;margin-top:5px;overflow-wrap:anywhere}.notice{min-height:20px;font-size:14px}.ok{color:#80e9b3}.bad{color:#ffae9c}.network{display:flex;justify-content:space-between;gap:10px;width:100%;text-align:left;background:#173a3c;margin-top:7px}.footer{font-size:12px;color:#87aaa6}details{margin-top:15px}summary{cursor:pointer;color:#b8dcd5}code{overflow-wrap:anywhere}@media(max-width:720px){.grid{grid-template-columns:1fr}.wide{grid-column:auto}.person{grid-template-columns:34px 1fr}.amount{grid-column:2}.stats{grid-template-columns:1fr 1fr}}</style></head>
 <body><main><header><div><h1>TRANSFORMANT <span style="color:#83e8c2">TOP 3</span></h1><p>Business Central · Månadens debiteringsvärde</p></div><span class="tag" id="connection">Ansluter…</span></header>
@@ -192,12 +240,13 @@ load();setInterval(load,15000);
 </script></body></html>)HTML");
   });
   server.on("/api/status", HTTP_GET, []() {
+    if(!authorized())return;
     JsonDocument d;
     d["hostname"] = "tfmtop";
     d["wifi_connected"] = WiFi.status() == WL_CONNECTED;
     d["setup_ap"] = apMode;
     d["ip"] = apMode ? WiFi.softAPIP().toString() : WiFi.localIP().toString();
-    d["firmware"] = "0.3.0-dashboard";
+    d["firmware"] = "0.4.0-admin";
     d["wifi_ssid"] = WiFi.status()==WL_CONNECTED?WiFi.SSID():"";
     d["wifi_rssi"] = WiFi.status()==WL_CONNECTED?WiFi.RSSI():-100;
     d["wifi_ip"] = WiFi.status()==WL_CONNECTED?WiFi.localIP().toString():"";
@@ -217,6 +266,7 @@ load();setInterval(load,15000);
     String out; serializeJson(d,out); sendJson(200,out);
   });
   server.on("/api/wifi/scan", HTTP_GET, []() {
+    if(!authorized())return;
     JsonDocument d;
     JsonArray a=d.to<JsonArray>();
     int n=WiFi.scanNetworks();
@@ -230,6 +280,7 @@ load();setInterval(load,15000);
     String out;serializeJson(d,out);sendJson(200,out);
   });
   server.on("/api/wifi", HTTP_POST, []() {
+    if(!authorized())return;
     JsonDocument d;
     if(deserializeJson(d,server.arg("plain"))) {sendJson(400,"{\"error\":\"Invalid JSON\"}");return;}
     String newSsid=d["ssid"] | "";
@@ -242,11 +293,13 @@ load();setInterval(load,15000);
     ESP.restart();
   });
   server.on("/api/refresh",HTTP_POST,[](){
+    if(!authorized())return;
     if(WiFi.status()!=WL_CONNECTED){sendJson(503,"{\"error\":\"Wi-Fi offline\"}");return;}
     fetchAttempted=true;lastFetch=millis();fetchTop3();
     JsonDocument d;d["status"]=apiError;d["stale"]=staleData;String out;serializeJson(d,out);sendJson(hasLiveData?200:502,out);
   });
   server.on("/api/settings",HTTP_POST,[](){
+    if(!authorized())return;
     JsonDocument d;if(deserializeJson(d,server.arg("plain"))){sendJson(400,"{\"error\":\"Invalid JSON\"}");return;}
     int seconds=d["refresh_seconds"] | 300;
     if(seconds<60||seconds>3600){sendJson(400,"{\"error\":\"Interval must be 60-3600 seconds\"}");return;}
@@ -254,12 +307,14 @@ load();setInterval(load,15000);
     sendJson(200,"{\"status\":\"saved\"}");
   });
   server.on("/api/config",HTTP_POST,[](){
+    if(!authorized())return;
     JsonDocument d;if(deserializeJson(d,server.arg("plain"))){sendJson(400,"{\"error\":\"Invalid JSON\"}");return;}
     String key=d["key"] | "";String ca=d["ca"] | "";
     if(key.length()<16||key.length()>256||ca.length()<500||ca.indexOf("-----BEGIN CERTIFICATE-----")<0||ca.length()>8192){sendJson(400,"{\"error\":\"Invalid key or CA PEM\"}");return;}
     prefs.putString("apiKey",key);prefs.putString("caPem",ca);apiKey=key;caPem=ca;
     fetchAttempted=false;sendJson(200,"{\"status\":\"saved\"}");
   });
+  const char* headers[]={"Authorization"};server.collectHeaders(headers,1);
   server.begin();
 }
 
@@ -267,6 +322,7 @@ void setup() {
   Serial.begin(115200);
   drawBootScreen();
   prefs.begin("tfmtop",false);
+  adminSalt=prefs.getString("adminSalt","");adminHash=prefs.getString("adminHash","");
   ssid=prefs.getString("ssid","");
   password=prefs.getString("password","");
   apiKey=prefs.getString("apiKey","");caPem=prefs.getString("caPem","");refreshSeconds=prefs.getUInt("refresh",300);if(refreshSeconds<60||refreshSeconds>3600)refreshSeconds=300;
