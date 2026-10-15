@@ -219,7 +219,7 @@ static String adminSalt,adminHash;
 static String hashAdmin(const String& salt,const String& pass){
   String value=salt+":"+pass;
   unsigned char digest[32];
-  mbedtls_sha256_ret((const unsigned char*)value.c_str(),value.length(),digest,0);
+  mbedtls_sha256((const unsigned char*)value.c_str(),value.length(),digest,0);
   char out[65];for(int i=0;i<32;i++)sprintf(out+i*2,"%02x",digest[i]);out[64]=0;
   return String(out);
 }
