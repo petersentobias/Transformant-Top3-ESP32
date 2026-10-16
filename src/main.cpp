@@ -275,9 +275,8 @@ String savedSsid[MAX_WIFI],savedPassword[MAX_WIFI];
 int wifiCount=0;
 unsigned long lastWifiAttempt=0;
 int nextWifiIndex=0;
-static constexpr unsigned long SCREEN_IDLE_MS=600000UL;
-static constexpr unsigned long DEEP_SLEEP_IDLE_MS=1800000UL;
-static constexpr uint64_t BACKUP_WAKE_US=1800ULL*1000000ULL;
+uint32_t screenMinutes=10,deepMinutes=30;
+bool screenAuto=true,deepAuto=true;
 unsigned long lastTouchActivity=0;
 bool screenSleeping=false;
 void enterDeepSleep(){
@@ -290,8 +289,7 @@ void enterDeepSleep(){
   if(touchReady && digitalRead(5)==HIGH){
     esp_sleep_enable_ext1_wakeup(1ULL<<5,ESP_EXT1_WAKEUP_ANY_LOW);
   }
-  // Backup wake every 30 min prevents an unrecoverable sleeping device.
-  esp_sleep_enable_timer_wakeup(BACKUP_WAKE_US);
+  // No timer wake: user can reset with the hardware reset/EN control.
   Serial.println("[power] Entering deep sleep");Serial.flush();
   esp_deep_sleep_start();
 }
@@ -417,6 +415,14 @@ void setupRoutes() {
 <body><main><header><div><img alt="Transformant" style="display:block;width:min(100%,380px);height:auto;max-height:84px;object-fit:contain;object-position:left center" src="data:image/png;base64,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"><div style="font-weight:700;margin-top:6px;color:#83e8c2">TOP 3</div><p>Business Central · Månadens debiteringsvärde</p></div><span class="tag" id="connection">Ansluter…</span></header>
 <div class="grid"><section class="card wide"><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><h2>Topplista</h2><span class="muted" id="period">Väntar på data</span></div><button id="refresh" onclick="refreshNow()">↻ Uppdatera nu</button></div><div class="rows" id="top" style="margin-top:20px"><p>Hämtar uppgifter…</p></div><p class="footer" id="dataInfo"></p></section>
 <section class="card"><h2>Wi-Fi och nätverk</h2><div class="stats"><div class="stat"><span class="muted">Anslutet nätverk</span><b id="ssidNow">–</b></div><div class="stat"><span class="muted">Signal</span><b id="signal">–</b></div><div class="stat"><span class="muted">IP-adress</span><b id="ip">–</b></div><div class="stat"><span class="muted">Enhet</span><b>tfmtop.local</b></div></div><h3>Sparade Wi-Fi-nätverk</h3><div id="savedWifi">Läser in…</div><h3>Lägg till eller uppdatera Wi-Fi</h3><button class="secondary" onclick="scan()">Sök tillgängliga nätverk</button><div id="networks"></div><label for="ssid">Nätverksnamn (SSID)</label><input id="ssid" maxlength="32" autocomplete="off" placeholder="Välj nätverk ovan eller skriv manuellt"><label for="password">Lösenord för det nya nätverket</label><input id="password" type="password" autocomplete="new-password"><button onclick="saveWifi()">Spara nätverk och anslut</button><p class="notice" id="wifiMsg"></p><p class="footer">Upp till sex nätverk sparas. Enheten försöker automatiskt ansluta till sparade nätverk när du byter plats.</p></section>
+<section class="card"><h2>Energisparläge</h2>
+<p class="muted">Inställningarna sparas efter omstart.</p>
+<label><input id="screenAuto" type="checkbox" checked> Automatisk skärmsläckning</label>
+<label for="screenMinutes">Släck efter (minuter)</label><input id="screenMinutes" type="number" min="1" max="120" value="10">
+<label><input id="deepAuto" type="checkbox" checked> Deep Sleep</label>
+<label for="deepMinutes">Deep Sleep efter (minuter utan beröring)</label><input id="deepMinutes" type="number" min="2" max="240" value="30">
+<button onclick="savePower()">Spara energisparläge</button><p id="powerMsg" class="notice"></p>
+<p class="footer">Ingen automatisk reservväckning. Om touchväckning inte fungerar måste enheten återställas med hårdvaran.</p></section>
 <section class="card"><h2>Uppdatering och API</h2><div class="stats"><div class="stat"><span class="muted">API-status</span><b id="apiStatus">–</b></div><div class="stat"><span class="muted">Senast uppdaterad</span><b id="updated">–</b></div><div class="stat"><span class="muted">API-nyckel</span><b id="apiConfigured">–</b></div><div class="stat"><span class="muted">HTTPS-certifikat</span><b id="caConfigured">–</b></div></div><label for="interval">Automatisk uppdatering</label><select id="interval"><option value="60">Varje minut</option><option value="120">Varannan minut</option><option value="300">Var 5:e minut</option><option value="600">Var 10:e minut</option><option value="900">Var 15:e minut</option><option value="1800">Var 30:e minut</option><option value="3600">Varje timme</option></select><button onclick="saveInterval()">Spara intervall</button><p class="notice" id="intervalMsg"></p><details><summary>Byt API-nyckel eller CA-certifikat</summary><p>Fyll i båda fälten för att ersätta befintliga uppgifter. Hemliga värden visas aldrig.</p><label for="key">DEVICE_API_KEY</label><input id="key" type="password" autocomplete="new-password"><label for="ca">CA-certifikat (PEM)</label><textarea id="ca" rows="5" placeholder="-----BEGIN CERTIFICATE-----"></textarea><button onclick="saveApi()">Spara API-inställningar</button><p class="notice" id="apiMsg"></p></details></section></div><p class="footer">Enhetens administrationssida är tillgänglig på det lokala nätverket. Begränsa åtkomsten till betrodda användare.</p></main>
 <script>
 const el=id=>document.getElementById(id);
@@ -426,6 +432,12 @@ function message(id,t,ok){el(id).textContent=t;el(id).className='notice '+(ok?'o
 async function req(path,options){let r=await fetch(path,options);let d=await r.json();if(!r.ok)throw Error(d.error||'HTTP '+r.status);return d}
 function post(body){return {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}}
 function render(d){
+ if(!['screenAuto','screenMinutes','deepAuto','deepMinutes'].includes(document.activeElement?.id)){
+  el('screenAuto').checked=d.screen_auto!==false;
+  el('deepAuto').checked=d.deep_auto!==false;
+  el('screenMinutes').value=d.screen_minutes??10;
+  el('deepMinutes').value=d.deep_minutes??30;
+ }
  el('connection').textContent=d.wifi_connected?'● Wi-Fi anslutet':'○ Offline';
  el('ssidNow').textContent=d.wifi_ssid||'Ej ansluten';el('ip').textContent=d.wifi_ip||d.ip||'–';
  let db=d.wifi_rssi;el('signal').textContent=d.wifi_connected?(db>=-55?'▂▄▆█':db>=-67?'▂▄▆':db>=-78?'▂▄':'▂')+' '+db+' dBm':'Ingen signal';
@@ -444,6 +456,15 @@ async function loadSavedWifi(){try{let names=await req('/api/wifi/saved');let bo
 async function refreshNow(){el('refresh').disabled=true;try{await req('/api/refresh',{method:'POST'});await load()}catch(e){alert('Uppdateringen misslyckades: '+e.message)}finally{el('refresh').disabled=false}}
 async function scan(){el('networks').textContent='Söker…';try{let n=await req('/api/wifi/scan');el('networks').replaceChildren(...n.map(x=>{let b=document.createElement('button');b.className='network';b.textContent=x.ssid+' · '+x.rssi+' dBm'+(x.secure?' 🔒':'');b.onclick=()=>{el('ssid').value=x.ssid;el('password').focus()};return b}));if(!n.length)el('networks').textContent='Inga nätverk hittades'}catch(e){el('networks').textContent=e.message}}
 async function saveWifi(){let ssid=el('ssid').value.trim();if(!ssid){message('wifiMsg','Välj ett nätverk först',false);return}if(!confirm('Byt till '+ssid+'? Enheten startar om.'))return;try{await req('/api/wifi',post({ssid,password:el('password').value}));message('wifiMsg','Sparat. Enheten startar om…',true);el('password').value=''}catch(e){message('wifiMsg',e.message,false)}}
+async function savePower(){
+ const sm=Number(el('screenMinutes').value),dm=Number(el('deepMinutes').value);
+ const sc=el('screenAuto').checked,dp=el('deepAuto').checked;
+ if(!Number.isInteger(sm)||!Number.isInteger(dm)||sm<1||sm>120||dm<2||dm>240||(sc&&dp&&dm<=sm)){
+  message('powerMsg','Ogiltiga tider: Deep Sleep måste ske efter skärmsläckningen.',false);return;
+ }
+ try{await req('/api/power',post({screen_auto:sc,deep_auto:dp,screen_minutes:sm,deep_minutes:dm}));
+ message('powerMsg','Sparat',true);await load()}catch(e){message('powerMsg',e.message,false)}
+}
 async function saveInterval(){try{await req('/api/settings',post({refresh_seconds:Number(el('interval').value)}));message('intervalMsg','Intervallet är sparat',true);await load()}catch(e){message('intervalMsg',e.message,false)}}
 async function saveApi(){let key=el('key').value,ca=el('ca').value;if(!key||!ca){message('apiMsg','Fyll i både nyckel och certifikat',false);return}try{await req('/api/config',post({key,ca}));el('key').value='';el('ca').value='';message('apiMsg','API-inställningarna är sparade',true);await load()}catch(e){message('apiMsg',e.message,false)}}
 load();setInterval(load,15000);
@@ -452,6 +473,8 @@ load();setInterval(load,15000);
   server.on("/api/status", HTTP_GET, []() {
     if(!authorized())return;
     JsonDocument d;
+    d["screen_auto"]=screenAuto;d["deep_auto"]=deepAuto;
+    d["screen_minutes"]=screenMinutes;d["deep_minutes"]=deepMinutes;
     d["hostname"] = "tfmtop";
     d["wifi_connected"] = WiFi.status() == WL_CONNECTED;
     d["setup_ap"] = apMode;
@@ -535,6 +558,22 @@ load();setInterval(load,15000);
     fetchAttempted=true;lastFetch=millis();fetchTop3();
     JsonDocument d;d["status"]=apiError;d["stale"]=staleData;String out;serializeJson(d,out);sendJson(hasLiveData?200:502,out);
   });
+  server.on("/api/power",HTTP_POST,[](){
+    if(!authorized())return;
+    JsonDocument d;
+    if(deserializeJson(d,server.arg("plain"))){sendJson(400,"{\"error\":\"Invalid JSON\"}");return;}
+    bool sc=d["screen_auto"] | true,dp=d["deep_auto"] | true;
+    int sm=d["screen_minutes"] | 10,dm=d["deep_minutes"] | 30;
+    if(sm<1||sm>120||dm<2||dm>240||(sc&&dp&&dm<=sm)){
+      sendJson(400,"{\"error\":\"Invalid sleep intervals\"}");return;
+    }
+    screenAuto=sc;deepAuto=dp;screenMinutes=sm;deepMinutes=dm;
+    prefs.putBool("scrAuto",sc);prefs.putBool("deepAuto",dp);
+    prefs.putUInt("scrMin",sm);prefs.putUInt("deepMin",dm);
+    if(!sc)wakeDisplay();
+    lastTouchActivity=millis();
+    sendJson(200,"{\"status\":\"saved\"}");
+  });
   server.on("/api/settings",HTTP_POST,[](){
     if(!authorized())return;
     JsonDocument d;if(deserializeJson(d,server.arg("plain"))){sendJson(400,"{\"error\":\"Invalid JSON\"}");return;}
@@ -569,6 +608,10 @@ void setup() {
   ssid=prefs.getString("ssid","");
   password=prefs.getString("password","");
   loadWifiProfiles();
+  screenAuto=prefs.getBool("scrAuto",true);deepAuto=prefs.getBool("deepAuto",true);
+  screenMinutes=prefs.getUInt("scrMin",10);deepMinutes=prefs.getUInt("deepMin",30);
+  if(screenMinutes<1||screenMinutes>120)screenMinutes=10;
+  if(deepMinutes<2||deepMinutes>240)deepMinutes=30;
   apiKey=prefs.getString("apiKey","");caPem=prefs.getString("caPem","");refreshSeconds=prefs.getUInt("refresh",300);if(refreshSeconds<60||refreshSeconds>3600)refreshSeconds=300;
   configTzTime("CET-1CEST,M3.5.0/2,M10.5.0/3","pool.ntp.org","time.google.com");
   WiFi.mode(WIFI_STA);
@@ -606,8 +649,8 @@ void loop() {
     Serial.println("Wi-Fi connected; setup hotspot disabled");
   }
   pollTouch();
-  if(millis()-lastTouchActivity>=DEEP_SLEEP_IDLE_MS)enterDeepSleep();
-  if(!screenSleeping && millis()-lastTouchActivity>=SCREEN_IDLE_MS){
+  if(deepAuto && millis()-lastTouchActivity>=deepMinutes*60000UL)enterDeepSleep();
+  if(screenAuto && !screenSleeping && millis()-lastTouchActivity>=screenMinutes*60000UL){
     screenSleeping=true;
     ledcWrite(2,0);
   }
