@@ -7,6 +7,7 @@
 #include <mbedtls/sha256.h>
 #include <mbedtls/base64.h>
 #include <esp_system.h>
+#include <esp_sleep.h>
 #include <WebServer.h>
 #include <ESPmDNS.h>
 #include <Preferences.h>
@@ -275,8 +276,25 @@ int wifiCount=0;
 unsigned long lastWifiAttempt=0;
 int nextWifiIndex=0;
 static constexpr unsigned long SCREEN_IDLE_MS=600000UL;
+static constexpr unsigned long DEEP_SLEEP_IDLE_MS=1800000UL;
+static constexpr uint64_t BACKUP_WAKE_US=1800ULL*1000000ULL;
 unsigned long lastTouchActivity=0;
 bool screenSleeping=false;
+void enterDeepSleep(){
+  ledcWrite(2,0);
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
+  pinMode(5,INPUT_PULLUP);
+  delay(20);
+  // CST816S INT is active-low; skip IRQ wake if line is already low.
+  if(touchReady && digitalRead(5)==HIGH){
+    esp_sleep_enable_ext1_wakeup(1ULL<<5,ESP_EXT1_WAKEUP_ANY_LOW);
+  }
+  // Backup wake every 30 min prevents an unrecoverable sleeping device.
+  esp_sleep_enable_timer_wakeup(BACKUP_WAKE_US);
+  Serial.println("[power] Entering deep sleep");Serial.flush();
+  esp_deep_sleep_start();
+}
 void wakeDisplay(){
   if(!screenSleeping)return;
   screenSleeping=false;
@@ -539,6 +557,7 @@ load();setInterval(load,15000);
 
 void setup() {
   Serial.begin(115200);
+  Serial.printf("[power] Wake cause: %d\n",(int)esp_sleep_get_wakeup_cause());
   drawBootScreen();
   setupTouch();
   analogReadResolution(12);
@@ -587,6 +606,7 @@ void loop() {
     Serial.println("Wi-Fi connected; setup hotspot disabled");
   }
   pollTouch();
+  if(millis()-lastTouchActivity>=DEEP_SLEEP_IDLE_MS)enterDeepSleep();
   if(!screenSleeping && millis()-lastTouchActivity>=SCREEN_IDLE_MS){
     screenSleeping=true;
     ledcWrite(2,0);
