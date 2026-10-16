@@ -204,6 +204,9 @@ void setupTouch(){
  touchReady=Wire.endTransmission()==0;
  Serial.printf("[touch] CST816S: %s\\n",touchReady?"detected":"not found");
 }
+extern unsigned long lastTouchActivity;
+extern bool screenSleeping;
+void wakeDisplay();
 void pollTouch(){
  if(!touchReady)return;
  // Same CST816S data layout as capsule-radar-128: read 0x02 (fingers + X/Y).
@@ -510,12 +513,12 @@ load();setInterval(load,15000);
   server.on("/api/wifi/delete",HTTP_POST,[](){
     if(!authorized())return;
     JsonDocument d;
-    if(deserializeJson(d,server.arg("plain"))){sendJson(400,"{\\"error\\":\\"Invalid JSON\\"}");return;}
+    if(deserializeJson(d,server.arg("plain"))){sendJson(400,"{\"error\":\"Invalid JSON\"}");return;}
     String name=d["ssid"] | "";
     int idx=-1;for(int i=0;i<wifiCount;i++)if(savedSsid[i]==name){idx=i;break;}
-    if(idx<0){sendJson(404,"{\\"error\\":\\"Not found\\"}");return;}
+    if(idx<0){sendJson(404,"{\"error\":\"Not found\"}");return;}
     for(int i=idx;i<wifiCount-1;i++){savedSsid[i]=savedSsid[i+1];savedPassword[i]=savedPassword[i+1];}
-    wifiCount--;saveWifiProfiles();sendJson(200,"{\\"status\\":\\"deleted\\"}");
+    wifiCount--;saveWifiProfiles();sendJson(200,"{\"status\":\"deleted\"}");
   });
   server.on("/api/wifi/scan", HTTP_GET, []() {
     if(!authorized())return;
@@ -541,7 +544,7 @@ load();setInterval(load,15000);
     int index=-1;
     for(int i=0;i<wifiCount;i++)if(savedSsid[i]==newSsid){index=i;break;}
     if(index<0){
-      if(wifiCount>=MAX_WIFI){sendJson(409,"{\\"error\\":\\"Maximum 6 networks\\"}");return;}
+      if(wifiCount>=MAX_WIFI){sendJson(409,"{\"error\":\"Maximum 6 networks\"}");return;}
       index=wifiCount++;
     }
     savedSsid[index]=newSsid;savedPassword[index]=newPassword;
