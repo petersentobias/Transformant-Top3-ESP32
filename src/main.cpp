@@ -220,6 +220,14 @@ void pollTouch(){
  uint8_t fingers=Wire.read(),xh=Wire.read(),xl=Wire.read(),yh=Wire.read(),yl=Wire.read();
  int x=((xh&0x0F)<<8)|xl,y=((yh&0x0F)<<8)|yl;
  bool touching=(fingers&0x0F)==1 && x<240 && y<240;
+ if(touching){
+   lastTouchActivity=now;
+   if(screenSleeping){
+     wakeDisplay();
+     tracking=false;swiped=true;upSamples=0;
+     return;
+   }
+ }
  if(!touching){
    if(++upSamples>=2){tracking=false;swiped=false;}
    return;
@@ -261,6 +269,50 @@ String ssid;
 String password;
 bool apMode = false;
 unsigned long lastReconnect = 0;
+static constexpr int MAX_WIFI=6;
+String savedSsid[MAX_WIFI],savedPassword[MAX_WIFI];
+int wifiCount=0;
+unsigned long lastWifiAttempt=0;
+int nextWifiIndex=0;
+static constexpr unsigned long SCREEN_IDLE_MS=600000UL;
+unsigned long lastTouchActivity=0;
+bool screenSleeping=false;
+void wakeDisplay(){
+  if(!screenSleeping)return;
+  screenSleeping=false;
+  ledcWrite(2,255);
+  renderScreen();
+}
+void loadWifiProfiles(){
+  wifiCount=0;
+  for(int i=0;i<MAX_WIFI;i++){
+    String key="w"+String(i);
+    String name=prefs.getString((key+"s").c_str(),"");
+    if(name.length()){
+      savedSsid[wifiCount]=name;
+      savedPassword[wifiCount]=prefs.getString((key+"p").c_str(),"");
+      wifiCount++;
+    }
+  }
+  if(!wifiCount && ssid.length()){
+    savedSsid[0]=ssid;savedPassword[0]=password;wifiCount=1;
+    prefs.putString("w0s",ssid);prefs.putString("w0p",password);
+  }
+}
+void saveWifiProfiles(){
+  for(int i=0;i<MAX_WIFI;i++){
+    String key="w"+String(i);
+    prefs.putString((key+"s").c_str(),i<wifiCount?savedSsid[i]:"");
+    prefs.putString((key+"p").c_str(),i<wifiCount?savedPassword[i]:"");
+  }
+}
+void tryNextWifi(){
+  if(!wifiCount)return;
+  int i=nextWifiIndex++%wifiCount;
+  WiFi.begin(savedSsid[i].c_str(),savedPassword[i].c_str());
+  lastWifiAttempt=millis();
+}
+
 void fetchTop3(){
  if(WiFi.status()!=WL_CONNECTED){apiError="Wi-Fi saknas";staleData=hasLiveData;return;}
  if(apiKey.length()<16){apiError="API-nyckel saknas";staleData=hasLiveData;return;}
@@ -346,7 +398,7 @@ void setupRoutes() {
 <style>:root{color-scheme:dark;font-family:system-ui,Segoe UI,sans-serif}*{box-sizing:border-box}body{margin:0;background:#071b1c;color:#e8f7f4}main{max-width:1040px;margin:auto;padding:26px 18px 60px}header{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}h1{margin:0;font-size:clamp(26px,4vw,38px)}h2{margin:0 0 16px;font-size:19px}p{color:#a6c3c0}.tag{border:1px solid #37645d;padding:7px 12px;border-radius:30px;color:#9ce9d0}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-top:22px}.card{background:#102e30;border:1px solid #234648;border-radius:18px;padding:22px}.wide{grid-column:1/-1}.muted{color:#9abbb7}.rows{display:grid;gap:12px}.person{display:grid;grid-template-columns:40px 1fr auto;align-items:center;gap:12px;background:#173a3c;padding:14px;border-radius:12px}.medal{display:grid;place-items:center;width:36px;height:36px;border-radius:50%;background:#e5bc66;color:#172629;font-weight:800}.person:nth-child(2) .medal{background:#becdd3}.person:nth-child(3) .medal{background:#c98c67}.person strong{display:block}.person small{color:#abc9c5}.amount{font-weight:750;color:#80e9c5;white-space:nowrap}label{display:block;margin:14px 0 6px;color:#b6d4d0}input,select,textarea{background:#071d20;color:#e8f7f4;border:1px solid #3b6464;border-radius:10px;padding:12px;width:100%;font:inherit}button{background:#75e5b3;color:#072521;border:0;border-radius:10px;padding:12px 17px;font:inherit;font-weight:700;cursor:pointer;margin-top:12px}button.secondary{background:#254d4c;color:#e8f7f4}button:disabled{opacity:.55}.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.stat{padding:13px;background:#173a3c;border-radius:12px}.stat b{display:block;margin-top:5px;overflow-wrap:anywhere}.notice{min-height:20px;font-size:14px}.ok{color:#80e9b3}.bad{color:#ffae9c}.network{display:flex;justify-content:space-between;gap:10px;width:100%;text-align:left;background:#173a3c;margin-top:7px}.footer{font-size:12px;color:#87aaa6}details{margin-top:15px}summary{cursor:pointer;color:#b8dcd5}code{overflow-wrap:anywhere}@media(max-width:720px){.grid{grid-template-columns:1fr}.wide{grid-column:auto}.person{grid-template-columns:34px 1fr}.amount{grid-column:2}.stats{grid-template-columns:1fr 1fr}}</style></head>
 <body><main><header><div><img alt="Transformant" style="display:block;width:min(100%,380px);height:auto;max-height:84px;object-fit:contain;object-position:left center" src="data:image/png;base64,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"><div style="font-weight:700;margin-top:6px;color:#83e8c2">TOP 3</div><p>Business Central · Månadens debiteringsvärde</p></div><span class="tag" id="connection">Ansluter…</span></header>
 <div class="grid"><section class="card wide"><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><h2>Topplista</h2><span class="muted" id="period">Väntar på data</span></div><button id="refresh" onclick="refreshNow()">↻ Uppdatera nu</button></div><div class="rows" id="top" style="margin-top:20px"><p>Hämtar uppgifter…</p></div><p class="footer" id="dataInfo"></p></section>
-<section class="card"><h2>Wi-Fi och nätverk</h2><div class="stats"><div class="stat"><span class="muted">Anslutet nätverk</span><b id="ssidNow">–</b></div><div class="stat"><span class="muted">Signal</span><b id="signal">–</b></div><div class="stat"><span class="muted">IP-adress</span><b id="ip">–</b></div><div class="stat"><span class="muted">Enhet</span><b>tfmtop.local</b></div></div><h3>Byt Wi-Fi</h3><button class="secondary" onclick="scan()">Sök tillgängliga nätverk</button><div id="networks"></div><label for="ssid">Nätverksnamn (SSID)</label><input id="ssid" maxlength="32" autocomplete="off" placeholder="Välj nätverk ovan eller skriv manuellt"><label for="password">Lösenord för det nya nätverket</label><input id="password" type="password" autocomplete="new-password"><button onclick="saveWifi()">Spara och byt nätverk</button><p class="notice" id="wifiMsg"></p><p class="footer">Enheten startar om vid nätverksbyte. Anslut till det nya nätverket för att öppna sidan igen.</p></section>
+<section class="card"><h2>Wi-Fi och nätverk</h2><div class="stats"><div class="stat"><span class="muted">Anslutet nätverk</span><b id="ssidNow">–</b></div><div class="stat"><span class="muted">Signal</span><b id="signal">–</b></div><div class="stat"><span class="muted">IP-adress</span><b id="ip">–</b></div><div class="stat"><span class="muted">Enhet</span><b>tfmtop.local</b></div></div><h3>Sparade Wi-Fi-nätverk</h3><div id="savedWifi">Läser in…</div><h3>Lägg till eller uppdatera Wi-Fi</h3><button class="secondary" onclick="scan()">Sök tillgängliga nätverk</button><div id="networks"></div><label for="ssid">Nätverksnamn (SSID)</label><input id="ssid" maxlength="32" autocomplete="off" placeholder="Välj nätverk ovan eller skriv manuellt"><label for="password">Lösenord för det nya nätverket</label><input id="password" type="password" autocomplete="new-password"><button onclick="saveWifi()">Spara nätverk och anslut</button><p class="notice" id="wifiMsg"></p><p class="footer">Upp till sex nätverk sparas. Enheten försöker automatiskt ansluta till sparade nätverk när du byter plats.</p></section>
 <section class="card"><h2>Uppdatering och API</h2><div class="stats"><div class="stat"><span class="muted">API-status</span><b id="apiStatus">–</b></div><div class="stat"><span class="muted">Senast uppdaterad</span><b id="updated">–</b></div><div class="stat"><span class="muted">API-nyckel</span><b id="apiConfigured">–</b></div><div class="stat"><span class="muted">HTTPS-certifikat</span><b id="caConfigured">–</b></div></div><label for="interval">Automatisk uppdatering</label><select id="interval"><option value="60">Varje minut</option><option value="120">Varannan minut</option><option value="300">Var 5:e minut</option><option value="600">Var 10:e minut</option><option value="900">Var 15:e minut</option><option value="1800">Var 30:e minut</option><option value="3600">Varje timme</option></select><button onclick="saveInterval()">Spara intervall</button><p class="notice" id="intervalMsg"></p><details><summary>Byt API-nyckel eller CA-certifikat</summary><p>Fyll i båda fälten för att ersätta befintliga uppgifter. Hemliga värden visas aldrig.</p><label for="key">DEVICE_API_KEY</label><input id="key" type="password" autocomplete="new-password"><label for="ca">CA-certifikat (PEM)</label><textarea id="ca" rows="5" placeholder="-----BEGIN CERTIFICATE-----"></textarea><button onclick="saveApi()">Spara API-inställningar</button><p class="notice" id="apiMsg"></p></details></section></div><p class="footer">Enhetens administrationssida är tillgänglig på det lokala nätverket. Begränsa åtkomsten till betrodda användare.</p></main>
 <script>
 const el=id=>document.getElementById(id);
@@ -369,7 +421,8 @@ function render(d){
  el('top').replaceChildren(...(d.top3||[]).filter(x=>x.name&&x.name!=='-').map(x=>{let div=document.createElement('div');div.className='person';let m=document.createElement('span');m.className='medal';m.textContent=x.rank;let info=document.createElement('div');let n=document.createElement('strong');n.textContent=x.name;let h=document.createElement('small');h.textContent=Number(x.hours||0).toLocaleString('sv-SE')+' timmar';info.append(n,h);let amount=document.createElement('span');amount.className='amount';amount.textContent=money(x.amount_sek);div.append(m,info,amount);return div}));
  if(!el('top').children.length)el('top').textContent='Inga topplistedata ännu';
 }
-async function load(){try{render(await req('/api/status'))}catch(e){el('connection').textContent='Kan inte nå enheten'}}
+async function load(){try{render(await req('/api/status'));await loadSavedWifi()}catch(e){el('connection').textContent='Kan inte nå enheten'}}
+async function loadSavedWifi(){try{let names=await req('/api/wifi/saved');let box=el('savedWifi');box.replaceChildren(...names.map(name=>{let line=document.createElement('div');line.style='display:flex;justify-content:space-between;gap:8px;margin:7px 0';let title=document.createElement('span');title.textContent=name;let btn=document.createElement('button');btn.textContent='Ta bort';btn.className='secondary';btn.onclick=async()=>{if(!confirm('Ta bort '+name+'?'))return;await req('/api/wifi/delete',post({ssid:name}));await loadSavedWifi()};line.append(title,btn);return line}));if(!names.length)box.textContent='Inga sparade nätverk'}catch(e){el('savedWifi').textContent=e.message}}
 async function refreshNow(){el('refresh').disabled=true;try{await req('/api/refresh',{method:'POST'});await load()}catch(e){alert('Uppdateringen misslyckades: '+e.message)}finally{el('refresh').disabled=false}}
 async function scan(){el('networks').textContent='Söker…';try{let n=await req('/api/wifi/scan');el('networks').replaceChildren(...n.map(x=>{let b=document.createElement('button');b.className='network';b.textContent=x.ssid+' · '+x.rssi+' dBm'+(x.secure?' 🔒':'');b.onclick=()=>{el('ssid').value=x.ssid;el('password').focus()};return b}));if(!n.length)el('networks').textContent='Inga nätverk hittades'}catch(e){el('networks').textContent=e.message}}
 async function saveWifi(){let ssid=el('ssid').value.trim();if(!ssid){message('wifiMsg','Välj ett nätverk först',false);return}if(!confirm('Byt till '+ssid+'? Enheten startar om.'))return;try{await req('/api/wifi',post({ssid,password:el('password').value}));message('wifiMsg','Sparat. Enheten startar om…',true);el('password').value=''}catch(e){message('wifiMsg',e.message,false)}}
@@ -407,6 +460,22 @@ load();setInterval(load,15000);
     d["stale"] = staleData;
     String out; serializeJson(d,out); sendJson(200,out);
   });
+  server.on("/api/wifi/saved",HTTP_GET,[](){
+    if(!authorized())return;
+    JsonDocument d;JsonArray a=d.to<JsonArray>();
+    for(int i=0;i<wifiCount;i++)a.add(savedSsid[i]);
+    String out;serializeJson(d,out);sendJson(200,out);
+  });
+  server.on("/api/wifi/delete",HTTP_POST,[](){
+    if(!authorized())return;
+    JsonDocument d;
+    if(deserializeJson(d,server.arg("plain"))){sendJson(400,"{\\"error\\":\\"Invalid JSON\\"}");return;}
+    String name=d["ssid"] | "";
+    int idx=-1;for(int i=0;i<wifiCount;i++)if(savedSsid[i]==name){idx=i;break;}
+    if(idx<0){sendJson(404,"{\\"error\\":\\"Not found\\"}");return;}
+    for(int i=idx;i<wifiCount-1;i++){savedSsid[i]=savedSsid[i+1];savedPassword[i]=savedPassword[i+1];}
+    wifiCount--;saveWifiProfiles();sendJson(200,"{\\"status\\":\\"deleted\\"}");
+  });
   server.on("/api/wifi/scan", HTTP_GET, []() {
     if(!authorized())return;
     JsonDocument d;
@@ -428,6 +497,14 @@ load();setInterval(load,15000);
     String newSsid=d["ssid"] | "";
     String newPassword=d["password"] | "";
     if(newSsid.length()==0 || newSsid.length()>32) {sendJson(400,"{\"error\":\"Invalid SSID\"}");return;}
+    int index=-1;
+    for(int i=0;i<wifiCount;i++)if(savedSsid[i]==newSsid){index=i;break;}
+    if(index<0){
+      if(wifiCount>=MAX_WIFI){sendJson(409,"{\\"error\\":\\"Maximum 6 networks\\"}");return;}
+      index=wifiCount++;
+    }
+    savedSsid[index]=newSsid;savedPassword[index]=newPassword;
+    saveWifiProfiles();
     prefs.putString("ssid",newSsid);
     prefs.putString("password",newPassword);
     sendJson(200,"{\"status\":\"saved; restarting\"}");
@@ -472,13 +549,15 @@ void setup() {
   adminSalt=prefs.getString("adminSalt","");adminHash=prefs.getString("adminHash","");
   ssid=prefs.getString("ssid","");
   password=prefs.getString("password","");
+  loadWifiProfiles();
   apiKey=prefs.getString("apiKey","");caPem=prefs.getString("caPem","");refreshSeconds=prefs.getUInt("refresh",300);if(refreshSeconds<60||refreshSeconds>3600)refreshSeconds=300;
   configTzTime("CET-1CEST,M3.5.0/2,M10.5.0/3","pool.ntp.org","time.google.com");
-  WiFi.mode(WIFI_STA); // No setup hotspot while trying saved credentials.
-  if(ssid.length()) {
-    WiFi.begin(ssid.c_str(),password.c_str());
+  WiFi.mode(WIFI_STA);
+  // Try every stored profile at boot; do not open setup AP unless all fail.
+  for(int i=0;i<wifiCount && WiFi.status()!=WL_CONNECTED;i++){
+    tryNextWifi();
     unsigned long started=millis();
-    while(WiFi.status()!=WL_CONNECTED && millis()-started<12000) delay(200);
+    while(WiFi.status()!=WL_CONNECTED && millis()-started<7000)delay(100);
   }
   if(WiFi.status()!=WL_CONNECTED) {
     apMode=true;
@@ -494,6 +573,7 @@ void setup() {
   if(MDNS.begin("tfmtop")) MDNS.addService("http","tcp",80);
   setupRoutes();
   drawDashboard();
+  lastTouchActivity=millis();
 }
 
 void loop() {
@@ -507,15 +587,20 @@ void loop() {
     Serial.println("Wi-Fi connected; setup hotspot disabled");
   }
   pollTouch();
+  if(!screenSleeping && millis()-lastTouchActivity>=SCREEN_IDLE_MS){
+    screenSleeping=true;
+    ledcWrite(2,0);
+  }
   if(millis()-lastBatterySample>15000){
     lastBatterySample=millis();int old=batteryPercent;float oldVoltage=batteryVoltage;sampleBattery();
-    if(screenPage==2&&(old!=batteryPercent || fabsf(oldVoltage-batteryVoltage)>=0.01f))drawBatteryPage();
+    if(!screenSleeping && screenPage==2&&(old!=batteryPercent || fabsf(oldVoltage-batteryVoltage)>=0.01f))drawBatteryPage();
   }
   if(WiFi.status()==WL_CONNECTED&&(!fetchAttempted||millis()-lastFetch>=refreshSeconds*1000UL)){
     fetchAttempted=true;lastFetch=millis();fetchTop3();
   }
   if(!apMode && WiFi.status()!=WL_CONNECTED && millis()-lastReconnect>15000) {
     lastReconnect=millis();
-    WiFi.reconnect();
+    if(wifiCount)tryNextWifi();
+    else WiFi.reconnect();
   }
 }
