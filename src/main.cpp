@@ -474,7 +474,7 @@ void setup() {
   password=prefs.getString("password","");
   apiKey=prefs.getString("apiKey","");caPem=prefs.getString("caPem","");refreshSeconds=prefs.getUInt("refresh",300);if(refreshSeconds<60||refreshSeconds>3600)refreshSeconds=300;
   configTzTime("CET-1CEST,M3.5.0/2,M10.5.0/3","pool.ntp.org","time.google.com");
-  WiFi.mode(WIFI_AP_STA);
+  WiFi.mode(WIFI_STA); // No setup hotspot while trying saved credentials.
   if(ssid.length()) {
     WiFi.begin(ssid.c_str(),password.c_str());
     unsigned long started=millis();
@@ -482,9 +482,13 @@ void setup() {
   }
   if(WiFi.status()!=WL_CONNECTED) {
     apMode=true;
+    WiFi.mode(WIFI_AP_STA);
     WiFi.softAP("TFMTop-Setup");
     Serial.print("Setup AP IP: "); Serial.println(WiFi.softAPIP());
   } else {
+    apMode=false;
+    WiFi.softAPdisconnect(true); // Ensure setup SSID is not broadcast after connection.
+    WiFi.mode(WIFI_STA);
     Serial.print("Connected IP: "); Serial.println(WiFi.localIP());
   }
   if(MDNS.begin("tfmtop")) MDNS.addService("http","tcp",80);
@@ -494,6 +498,14 @@ void setup() {
 
 void loop() {
   server.handleClient();
+  // Provisioning can connect in the background after the initial AP fallback.
+  // Turn the open setup AP off immediately once station Wi-Fi is connected.
+  if(apMode && WiFi.status()==WL_CONNECTED){
+    WiFi.softAPdisconnect(true);
+    WiFi.mode(WIFI_STA);
+    apMode=false;
+    Serial.println("Wi-Fi connected; setup hotspot disabled");
+  }
   pollTouch();
   if(millis()-lastBatterySample>15000){
     lastBatterySample=millis();int old=batteryPercent;float oldVoltage=batteryVoltage;sampleBattery();
